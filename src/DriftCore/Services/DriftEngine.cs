@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Runtime.InteropServices;
 using DriftCore.Models;
 using Nefarius.ViGEm.Client;
 using Nefarius.ViGEm.Client.Exceptions;
@@ -25,11 +24,6 @@ public class DriftEngine : BackgroundService
     // --- Componentes de Driver ---
     private ViGEmClient? _vigem;
     private IXbox360Controller? _virtualController;
-
-    // --- Teclado (Acesso de Baixo Nível) ---
-    [DllImport("user32.dll")] static extern short GetAsyncKeyState(int vKey);
-    private const int VK_A = 0x41; // Tecla A
-    private const int VK_D = 0x44; // Tecla D
 
     public DriftEngine()
     {
@@ -123,7 +117,6 @@ public class DriftEngine : BackgroundService
 
         // 1. Inputs Disponíveis
         var inputs = new List<DeviceInfo>();
-        inputs.Add(new DeviceInfo { Name = "Teclado / Mouse", Type = InputDeviceType.Keyboard, IsConnected = true });
 
         for (int i = 0; i < 4; i++)
         {
@@ -190,32 +183,17 @@ public class DriftEngine : BackgroundService
                 double steeringInput = 0;
                 bool inputDetected = false;
                 State gamepadState = new State();
-                int gamepadIndex = -1;
+                int gamepadIndex = (int)_config.SelectedInputDevice;
 
-                if (_config.SelectedInputDevice == InputDeviceType.Keyboard)
+                if (gamepadIndex >= 0 && gamepadIndex <= 3 && XInput.GetState((uint)gamepadIndex, out gamepadState))
                 {
-                    bool left = (GetAsyncKeyState(VK_A) & 0x8000) != 0;
-                    bool right = (GetAsyncKeyState(VK_D) & 0x8000) != 0;
+                    // -32768..32767 -> -1.0..1.0
+                    steeringInput = gamepadState.Gamepad.LeftThumbX / 32768.0;
 
-                    if (left) steeringInput -= 1.0;
-                    if (right) steeringInput += 1.0;
-                    inputDetected = left || right;
-                }
-                else
-                {
-                    // Gamepad0 (Enum 1) -> Index 0
-                    gamepadIndex = (int)_config.SelectedInputDevice - 1;
+                    // Deadzone simples
+                    if (Math.Abs(steeringInput) < 0.15) steeringInput = 0;
 
-                    if (gamepadIndex >= 0 && gamepadIndex <= 3 && XInput.GetState((uint)gamepadIndex, out gamepadState))
-                    {
-                        // -32768..32767 -> -1.0..1.0
-                        steeringInput = gamepadState.Gamepad.LeftThumbX / 32768.0;
-
-                        // Deadzone simples
-                        if (Math.Abs(steeringInput) < 0.15) steeringInput = 0;
-
-                        inputDetected = true;
-                    }
+                    inputDetected = true;
                 }
 
                 // 3. Processamento (Passthrough na Fase 1)
@@ -225,8 +203,8 @@ public class DriftEngine : BackgroundService
                     short outputSteering = (short)(steeringInput * 32767);
                     _virtualController.SetAxisValue(Xbox360Axis.LeftThumbX, outputSteering);
 
-                    // 4. Mapeamento de Botões (Se for Gamepad)
-                    if (_config.SelectedInputDevice != InputDeviceType.Keyboard && inputDetected)
+                    // 4. Mapeamento de Botões
+                    if (inputDetected)
                     {
                         ApplyFullPassthrough(gamepadState.Gamepad);
                     }
@@ -304,22 +282,20 @@ public class DriftEngine : BackgroundService
 
     private void OnFeedbackReceived(object sender, Xbox360FeedbackReceivedEventArgs e)
     {
-        if (_config.SelectedInputDevice == InputDeviceType.Keyboard) return;
-
-        int index = (int)_config.SelectedInputDevice - 1;
+        int index = (int)_config.SelectedInputDevice;
         if (index >= 0 && index <= 3)
         {
-            const double intensity = 5;
-
-            ushort largeOut = (ushort)Math.Min(e.LargeMotor * 257 * intensity, 65535);
-            ushort smallOut = (ushort)Math.Min(e.SmallMotor * 257 * intensity, 65535);
+            ushort boost = 4;
+            // Passthrough 1:1 - conversão de 0-255 para 0-65535 * boost
+            ushort largeOut = (ushort)(e.LargeMotor * 257 * boost);
+            ushort smallOut = (ushort)(e.SmallMotor * 257 * boost);
 
             var vibration = new Vibration(largeOut, smallOut);
             XInput.SetVibration((uint)index, vibration);
 
             if (_isTestMode && (e.LargeMotor > 0 || e.SmallMotor > 0))
             {
-                Console.WriteLine($"[Vibration] In: L={e.LargeMotor} S={e.SmallMotor} | Out: L={largeOut} S={smallOut}");
+                Console.WriteLine($"[Vibration] In: L={e.LargeMotor} S={e.SmallMotor} | Out: L={largeOut} S={smallOut} | Idx={index}");
             }
         }
     }

@@ -9,11 +9,6 @@ namespace DriftCore.Models;
 public enum InputDeviceType
 {
     /// <summary>
-    /// Keyboard input (A/D or configured keys).
-    /// </summary>
-    Keyboard,
-
-    /// <summary>
     /// XInput controller at index 0.
     /// </summary>
     Gamepad0,
