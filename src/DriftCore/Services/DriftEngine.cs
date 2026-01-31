@@ -1,5 +1,10 @@
+using System.Diagnostics;
+using System.Threading;
 using DriftCore.Models;
+using DriftCore.Services.Heartbeat;
 using DriftCore.Services.Input;
+using DriftCore.Services.InputProcessing;
+using DriftCore.Services.Status;
 using DriftCore.Services.VirtualController;
 using DriftCore.Services.Vibration;
 
@@ -12,6 +17,9 @@ public class DriftEngine : BackgroundService
 {
     // === Dependências ===
     private readonly IHostApplicationLifetime _appLifetime;
+    private readonly EngineStatusProvider _statusProvider;
+    private readonly HeartbeatMonitor _heartbeat;
+    private readonly InputProcessor _inputProcessor;
 
     // === Configuração ===
     private DriftConfig _config = new();
@@ -19,17 +27,19 @@ public class DriftEngine : BackgroundService
     private volatile bool _isShuttingDown;
 
     // === Heartbeat (Desativado até Flutter estar pronto) ===
-    private const bool HEARTBEAT_ENABLED = true;
+    private const bool HEARTBEAT_ENABLED = false;
     private static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(10);
-    private DateTime _lastHeartbeat = DateTime.UtcNow;
 
     // === Componentes ===
     private VirtualControllerManager? _virtualController;
     private VibrationProcessor? _vibrationProcessor;
 
     // === Retry do Driver ===
-    private DateTime _lastDriverRetry = DateTime.MinValue;
+    private long _lastDriverRetryTicks;
     private static readonly TimeSpan DriverRetryInterval = TimeSpan.FromSeconds(5);
+    private static readonly long DriverRetryIntervalTicks = (long)(Stopwatch.Frequency * DriverRetryInterval.TotalSeconds);
+
+    private static readonly TimeSpan DisconnectedDelay = TimeSpan.FromMilliseconds(200);
 
     // === Jogos Implementados ===
     private static readonly List<GameProfile> ImplementedGames = new();
@@ -37,6 +47,9 @@ public class DriftEngine : BackgroundService
     public DriftEngine(IHostApplicationLifetime appLifetime)
     {
         _appLifetime = appLifetime;
+        _statusProvider = new EngineStatusProvider(ImplementedGames);
+        _heartbeat = new HeartbeatMonitor(HEARTBEAT_ENABLED, HeartbeatTimeout);
+        _inputProcessor = new InputProcessor();
     }
 
     #region Ciclo de Vida
@@ -46,14 +59,13 @@ public class DriftEngine : BackgroundService
         Console.WriteLine("[Engine] Iniciando...");
 
         _vibrationProcessor = new VibrationProcessor(_testMode);
-        int debugCounter = 0;
 
         try
         {
             while (!stoppingToken.IsCancellationRequested && !_isShuttingDown)
             {
                 // Verifica timeout do heartbeat (se ativado)
-                if (HEARTBEAT_ENABLED && IsHeartbeatExpired())
+                if (_heartbeat.IsExpired())
                 {
                     Console.WriteLine("[Engine] Heartbeat expirado. Encerrando aplicação...");
                     _appLifetime.StopApplication();
@@ -64,14 +76,14 @@ public class DriftEngine : BackgroundService
 
                 if (_virtualController?.IsConnected != true)
                 {
-                    await Task.Delay(1000, stoppingToken);
+                    await Task.Delay(DisconnectedDelay, stoppingToken);
                     continue;
                 }
 
                 ProcessFrame();
-                LogDebug(ref debugCounter);
+                LogDebug();
 
-                await Task.Yield();
+                Thread.Yield();
             }
         }
         catch (OperationCanceledException) { /* Shutdown normal */ }
@@ -106,17 +118,18 @@ public class DriftEngine : BackgroundService
 
     private void ProcessFrame()
     {
-        int gamepadIndex = (int)_config.SelectedInputDevice;
+        var config = Volatile.Read(ref _config);
+        int gamepadIndex = (int)config.SelectedInputDevice;
         var input = GamepadReader.Read(gamepadIndex);
 
         if (!input.IsConnected)
         {
-            _virtualController!.SendState(VirtualControllerState.Empty);
+            _virtualController?.SendState(VirtualControllerState.Empty);
             return;
         }
 
-        // TODO: Aqui entra o processamento de física/drift no futuro
-        double processedSteering = input.Steering;
+        // Processa input (futuro: manter ângulo)
+        double processedSteering = _inputProcessor.ProcessSteering(input.Steering);
 
         // Converte para o range do controle virtual
         short steeringOutput = (short)(processedSteering * 32767);
@@ -124,7 +137,7 @@ public class DriftEngine : BackgroundService
         // Cria estado com steering processado, resto é passthrough
         var state = VirtualControllerState.FromGamepad(input.Gamepad, steeringOutput);
 
-        _virtualController!.SendState(state);
+        _virtualController?.SendState(state);
     }
 
     private void EnsureDriverConnected()
@@ -132,10 +145,11 @@ public class DriftEngine : BackgroundService
         if (_virtualController?.IsConnected == true)
             return;
 
-        if (DateTime.UtcNow - _lastDriverRetry < DriverRetryInterval)
+        long nowTicks = Stopwatch.GetTimestamp();
+        if (nowTicks - _lastDriverRetryTicks < DriverRetryIntervalTicks)
             return;
 
-        _lastDriverRetry = DateTime.UtcNow;
+        _lastDriverRetryTicks = nowTicks;
 
         if (_isShuttingDown)
             return;
@@ -161,7 +175,8 @@ public class DriftEngine : BackgroundService
 
     private void OnVibrationReceived(object? sender, VibrationEventArgs e)
     {
-        int gamepadIndex = (int)_config.SelectedInputDevice;
+        var config = Volatile.Read(ref _config);
+        int gamepadIndex = (int)config.SelectedInputDevice;
         _vibrationProcessor?.Process(gamepadIndex, e.LargeMotor, e.SmallMotor);
     }
 
@@ -171,9 +186,7 @@ public class DriftEngine : BackgroundService
 
     public void SetTestMode(bool isTest) => _testMode = isTest;
 
-    public void RegisterHeartbeat() => _lastHeartbeat = DateTime.UtcNow;
-
-    private bool IsHeartbeatExpired() => DateTime.UtcNow - _lastHeartbeat > HeartbeatTimeout;
+    public void RegisterHeartbeat() => _heartbeat.Register();
 
     public void Shutdown()
     {
@@ -184,52 +197,34 @@ public class DriftEngine : BackgroundService
 
     public void UpdateConfig(DriftConfig newConfig)
     {
-        _config = newConfig;
+        Volatile.Write(ref _config, newConfig);
+        _inputProcessor.UpdateSmoothing(newConfig.IsSmoothingEnabled, newConfig.SmoothingValue);
         if (_testMode)
-            Console.WriteLine($"[Config] Input: {_config.SelectedInputDevice}");
+            Console.WriteLine($"[Config] Input: {newConfig.SelectedInputDevice}");
     }
 
     public EngineStatus GetStatus()
     {
-        var inputs = Enumerable.Range(0, 4)
-            .Select(i => new DeviceInfo
-            {
-                Name = $"Xbox Controller {i + 1}",
-                Type = (InputDeviceType)i,
-                IsConnected = GamepadReader.IsConnected(i)
-            })
-            .ToList();
-
-        var selectedInput = inputs.FirstOrDefault(x => x.Type == _config.SelectedInputDevice)
-            ?? new DeviceInfo { Name = "None", IsConnected = false };
-
-        return new EngineStatus
-        {
-            AvailableInputList = inputs,
-            SelectedInput = selectedInput,
-            ImplementedGames = ImplementedGames,
-            NotImplementedGames = Enum.GetValues<GameProfile>().Except(ImplementedGames).ToList(),
-            SelectedGame = new GameInfo
-            {
-                Game = _config.SelectedGame,
-                IsConnected = false // Fase 1: Sem telemetria
-            }
-        };
+        var config = Volatile.Read(ref _config);
+        return _statusProvider.BuildStatus(config.SelectedInputDevice, config.SelectedGame);
     }
 
     #endregion
 
     #region Debug
 
-    private void LogDebug(ref int counter)
+    private int _debugCounter;
+
+    private void LogDebug()
     {
         if (!_testMode) return;
 
-        counter++;
-        if (counter < 50) return;
-        counter = 0;
+        _debugCounter++;
+        if (_debugCounter < 50) return;
+        _debugCounter = 0;
 
-        int gamepadIndex = (int)_config.SelectedInputDevice;
+        var config = Volatile.Read(ref _config);
+        int gamepadIndex = (int)config.SelectedInputDevice;
         var input = GamepadReader.Read(gamepadIndex);
 
         Console.WriteLine($"[IO] Gamepad{gamepadIndex} | Connected: {input.IsConnected} | Steering: {input.Steering:F2}");
