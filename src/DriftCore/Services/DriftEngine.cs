@@ -10,10 +10,18 @@ namespace DriftCore.Services;
 /// </summary>
 public class DriftEngine : BackgroundService
 {
+    // === Dependências ===
+    private readonly IHostApplicationLifetime _appLifetime;
+
     // === Configuração ===
     private DriftConfig _config = new();
     private bool _testMode;
     private volatile bool _isShuttingDown;
+
+    // === Heartbeat (Desativado até Flutter estar pronto) ===
+    private const bool HEARTBEAT_ENABLED = true;
+    private static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(10);
+    private DateTime _lastHeartbeat = DateTime.UtcNow;
 
     // === Componentes ===
     private VirtualControllerManager? _virtualController;
@@ -23,9 +31,13 @@ public class DriftEngine : BackgroundService
     private DateTime _lastDriverRetry = DateTime.MinValue;
     private static readonly TimeSpan DriverRetryInterval = TimeSpan.FromSeconds(5);
 
-    // === Status (para API) ===
-    private DateTime _lastHeartbeat = DateTime.Now;
+    // === Jogos Implementados ===
     private static readonly List<GameProfile> ImplementedGames = new();
+
+    public DriftEngine(IHostApplicationLifetime appLifetime)
+    {
+        _appLifetime = appLifetime;
+    }
 
     #region Ciclo de Vida
 
@@ -40,6 +52,14 @@ public class DriftEngine : BackgroundService
         {
             while (!stoppingToken.IsCancellationRequested && !_isShuttingDown)
             {
+                // Verifica timeout do heartbeat (se ativado)
+                if (HEARTBEAT_ENABLED && IsHeartbeatExpired())
+                {
+                    Console.WriteLine("[Engine] Heartbeat expirado. Encerrando aplicação...");
+                    _appLifetime.StopApplication();
+                    break;
+                }
+
                 EnsureDriverConnected();
 
                 if (_virtualController?.IsConnected != true)
@@ -151,12 +171,15 @@ public class DriftEngine : BackgroundService
 
     public void SetTestMode(bool isTest) => _testMode = isTest;
 
-    public void RegisterHeartbeat() => _lastHeartbeat = DateTime.Now;
+    public void RegisterHeartbeat() => _lastHeartbeat = DateTime.UtcNow;
+
+    private bool IsHeartbeatExpired() => DateTime.UtcNow - _lastHeartbeat > HeartbeatTimeout;
 
     public void Shutdown()
     {
         Console.WriteLine("[Engine] Shutdown solicitado.");
         _isShuttingDown = true;
+        _appLifetime.StopApplication();
     }
 
     public void UpdateConfig(DriftConfig newConfig)

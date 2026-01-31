@@ -34,7 +34,7 @@ else
 
 // --- 3. Endpoints da API (Comunicação com Flutter) ---
 
-// Heartbeat: O Flutter chama isso a cada 2s. Se parar, o C# fecha.
+// Heartbeat: O Flutter chama isso a cada 10s para manter a engine viva.
 app.MapGet("/api/heartbeat", (DriftEngine engine) =>
 {
     engine.RegisterHeartbeat();
