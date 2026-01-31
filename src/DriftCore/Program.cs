@@ -61,4 +61,25 @@ engine.SetTestMode(isTestMode);
 // Desligamento limpo ao encerrar a aplicação (inclui Ctrl+C)
 app.Lifetime.ApplicationStopping.Register(engine.Shutdown);
 
+// Fallback: garante finalização total do processo
+app.Lifetime.ApplicationStopped.Register(() =>
+{
+    Environment.Exit(0);
+});
+
+// Garantia de Ctrl+C mesmo em modo teste
+Console.CancelKeyPress += (_, e) =>
+{
+    e.Cancel = true;
+    app.Lifetime.StopApplication();
+
+    // Timeout forçado: se não encerrar em 3s, mata o processo
+    Task.Run(async () =>
+    {
+        await Task.Delay(3000);
+        Console.WriteLine("[Engine] Timeout de shutdown. Forçando encerramento...");
+        Environment.Exit(0);
+    });
+};
+
 app.Run("http://localhost:5000");

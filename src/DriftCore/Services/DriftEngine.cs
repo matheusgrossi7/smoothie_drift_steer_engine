@@ -192,7 +192,8 @@ public class DriftEngine : BackgroundService
     {
         Console.WriteLine("[Engine] Shutdown solicitado.");
         _isShuttingDown = true;
-        _appLifetime.StopApplication();
+        if (!_appLifetime.ApplicationStopping.IsCancellationRequested)
+            _appLifetime.StopApplication();
     }
 
     public void UpdateConfig(DriftConfig newConfig)
