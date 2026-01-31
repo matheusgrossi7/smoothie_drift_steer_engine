@@ -9,70 +9,56 @@ namespace DriftCore.Services.VirtualController;
 /// <summary>
 /// Gerencia o controle virtual Xbox 360 via ViGEm.
 /// </summary>
-public class VirtualControllerManager : IDisposable
+public sealed class VirtualControllerManager : IDisposable
 {
     private ViGEmClient? _client;
     private IXbox360Controller? _controller;
-    private bool _isDisposed;
+    private bool _disposed;
 
-    public bool IsConnected => _controller != null;
+    public bool IsConnected => _controller != null && !_disposed;
 
     public event EventHandler<VibrationEventArgs>? VibrationReceived;
 
-    /// <summary>
-    /// Inicializa a conexão com o driver ViGEm e cria o controle virtual.
-    /// </summary>
     public bool Initialize()
     {
         try
         {
-            Console.WriteLine("[VirtualController] Conectando ao Driver ViGEm...");
-
+            Console.WriteLine("[VirtualController] Conectando ao ViGEm...");
             _client = new ViGEmClient();
             _controller = _client.CreateXbox360Controller();
             _controller.FeedbackReceived += OnFeedbackReceived;
             _controller.Connect();
-
-            Console.WriteLine("[VirtualController] Controle Virtual Criado com Sucesso!");
+            Console.WriteLine("[VirtualController] Conectado!");
             return true;
         }
         catch (VigemBusNotFoundException)
         {
-            Console.WriteLine("[ERRO] Driver ViGEmBus não encontrado no sistema.");
+            Console.WriteLine("[ERRO] Driver ViGEmBus não encontrado.");
             return false;
         }
         catch (DllNotFoundException)
         {
-            Console.WriteLine("[ERRO] DLL do cliente ViGEm não encontrada.");
+            Console.WriteLine("[ERRO] DLL ViGEm não encontrada.");
             return false;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[ERRO] Falha ao iniciar driver: {ex.Message}");
+            Console.WriteLine($"[ERRO] Falha ViGEm: {ex.Message}");
             return false;
         }
     }
 
-    /// <summary>
-    /// Envia o estado atual para o jogo.
-    /// </summary>
     public void SendState(VirtualControllerState state)
     {
-        if (_controller == null) return;
+        if (_controller == null || _disposed) return;
 
-        // Eixos analógicos
         _controller.SetAxisValue(Xbox360Axis.LeftThumbX, state.LeftStickX);
         _controller.SetAxisValue(Xbox360Axis.LeftThumbY, state.LeftStickY);
         _controller.SetAxisValue(Xbox360Axis.RightThumbX, state.RightStickX);
         _controller.SetAxisValue(Xbox360Axis.RightThumbY, state.RightStickY);
-
-        // Gatilhos
         _controller.SetSliderValue(Xbox360Slider.LeftTrigger, state.LeftTrigger);
         _controller.SetSliderValue(Xbox360Slider.RightTrigger, state.RightTrigger);
-
-        // Botões
         SetButtons(state.Buttons);
-
         _controller.SubmitReport();
     }
 
@@ -84,16 +70,12 @@ public class VirtualControllerManager : IDisposable
         _controller.SetButtonState(Xbox360Button.B, buttons.HasFlag(GamepadButtons.B));
         _controller.SetButtonState(Xbox360Button.X, buttons.HasFlag(GamepadButtons.X));
         _controller.SetButtonState(Xbox360Button.Y, buttons.HasFlag(GamepadButtons.Y));
-
         _controller.SetButtonState(Xbox360Button.LeftShoulder, buttons.HasFlag(GamepadButtons.LeftShoulder));
         _controller.SetButtonState(Xbox360Button.RightShoulder, buttons.HasFlag(GamepadButtons.RightShoulder));
-
         _controller.SetButtonState(Xbox360Button.Back, buttons.HasFlag(GamepadButtons.Back));
         _controller.SetButtonState(Xbox360Button.Start, buttons.HasFlag(GamepadButtons.Start));
-
         _controller.SetButtonState(Xbox360Button.LeftThumb, buttons.HasFlag(GamepadButtons.LeftThumb));
         _controller.SetButtonState(Xbox360Button.RightThumb, buttons.HasFlag(GamepadButtons.RightThumb));
-
         _controller.SetButtonState(Xbox360Button.Up, buttons.HasFlag(GamepadButtons.DPadUp));
         _controller.SetButtonState(Xbox360Button.Down, buttons.HasFlag(GamepadButtons.DPadDown));
         _controller.SetButtonState(Xbox360Button.Left, buttons.HasFlag(GamepadButtons.DPadLeft));
@@ -107,8 +89,8 @@ public class VirtualControllerManager : IDisposable
 
     public void Dispose()
     {
-        if (_isDisposed) return;
-        _isDisposed = true;
+        if (_disposed) return;
+        _disposed = true;
 
         Console.WriteLine("[VirtualController] Desconectando...");
 
@@ -123,7 +105,7 @@ public class VirtualControllerManager : IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[VirtualController] Erro ao desconectar: {ex.Message}");
+            Console.WriteLine($"[VirtualController] Erro: {ex.Message}");
         }
 
         try
@@ -133,24 +115,21 @@ public class VirtualControllerManager : IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[VirtualController] Erro ao liberar cliente: {ex.Message}");
+            Console.WriteLine($"[VirtualController] Erro cliente: {ex.Message}");
         }
 
         Console.WriteLine("[VirtualController] Desconectado.");
     }
 }
 
-/// <summary>
-/// Argumentos do evento de vibração.
-/// </summary>
-public class VibrationEventArgs : EventArgs
+public sealed class VibrationEventArgs : EventArgs
 {
     public byte LargeMotor { get; }
     public byte SmallMotor { get; }
 
-    public VibrationEventArgs(byte largeMotor, byte smallMotor)
+    public VibrationEventArgs(byte large, byte small)
     {
-        LargeMotor = largeMotor;
-        SmallMotor = smallMotor;
+        LargeMotor = large;
+        SmallMotor = small;
     }
 }

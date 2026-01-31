@@ -7,66 +7,54 @@ namespace DriftCore.Services.Input;
 /// </summary>
 public static class GamepadReader
 {
-    private const double DEADZONE = 0.15;
+    private const double Deadzone = 0.15;
+    private const int MaxGamepadIndex = 3;
 
-    /// <summary>
-    /// Lê o estado completo de um gamepad.
-    /// </summary>
-    public static GamepadReadResult Read(int gamepadIndex)
+    public static GamepadReadResult Read(int index)
     {
-        if (gamepadIndex < 0 || gamepadIndex > 3)
-            return GamepadReadResult.NotConnected;
-
-        if (!XInput.GetState((uint)gamepadIndex, out var state))
-            return GamepadReadResult.NotConnected;
+        if (!IsValidIndex(index)) return GamepadReadResult.Disconnected;
+        if (!XInput.GetState((uint)index, out var state)) return GamepadReadResult.Disconnected;
 
         double steering = NormalizeAxis(state.Gamepad.LeftThumbX);
 
-        return new GamepadReadResult
-        {
-            IsConnected = true,
-            Steering = ApplyDeadzone(steering),
-            Gamepad = state.Gamepad
-        };
+        return new GamepadReadResult(
+            isConnected: true,
+            steering: ApplyDeadzone(steering),
+            gamepad: state.Gamepad
+        );
     }
 
-    /// <summary>
-    /// Verifica se um gamepad está conectado.
-    /// </summary>
-    public static bool IsConnected(int gamepadIndex)
+    public static bool IsConnected(int index)
     {
-        if (gamepadIndex < 0 || gamepadIndex > 3)
-            return false;
-
-        return XInput.GetState((uint)gamepadIndex, out _);
+        return IsValidIndex(index) && XInput.GetState((uint)index, out _);
     }
 
-    /// <summary>
-    /// Envia vibração para um gamepad.
-    /// </summary>
-    public static void SetVibration(int gamepadIndex, ushort largeMotor, ushort smallMotor)
+    public static void SetVibration(int index, ushort largeMotor, ushort smallMotor)
     {
-        if (gamepadIndex < 0 || gamepadIndex > 3)
-            return;
-
-        var vibration = new Vortice.XInput.Vibration(largeMotor, smallMotor);
-        XInput.SetVibration((uint)gamepadIndex, vibration);
+        if (!IsValidIndex(index)) return;
+        XInput.SetVibration((uint)index, new Vortice.XInput.Vibration(largeMotor, smallMotor));
     }
 
+    private static bool IsValidIndex(int index) => index >= 0 && index <= MaxGamepadIndex;
     private static double NormalizeAxis(short value) => value / 32768.0;
-
-    private static double ApplyDeadzone(double value) =>
-        Math.Abs(value) < DEADZONE ? 0 : value;
+    private static double ApplyDeadzone(double value) => Math.Abs(value) < Deadzone ? 0 : value;
 }
 
 /// <summary>
-/// Resultado da leitura de um gamepad.
+/// Resultado imutável da leitura de um gamepad.
 /// </summary>
-public struct GamepadReadResult
+public readonly struct GamepadReadResult
 {
-    public bool IsConnected;
-    public double Steering;
-    public Gamepad Gamepad;
+    public bool IsConnected { get; }
+    public double Steering { get; }
+    public Gamepad Gamepad { get; }
 
-    public static GamepadReadResult NotConnected => new() { IsConnected = false };
+    public GamepadReadResult(bool isConnected, double steering, Gamepad gamepad)
+    {
+        IsConnected = isConnected;
+        Steering = steering;
+        Gamepad = gamepad;
+    }
+
+    public static GamepadReadResult Disconnected => new(false, 0, default);
 }

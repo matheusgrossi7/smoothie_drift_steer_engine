@@ -3,37 +3,45 @@ using Vortice.XInput;
 namespace DriftCore.Services.VirtualController;
 
 /// <summary>
-/// Estado do controle virtual a ser enviado para o jogo.
+/// Estado imutável do controle virtual a ser enviado para o jogo.
 /// </summary>
-public struct VirtualControllerState
+public readonly struct VirtualControllerState
 {
-    public short LeftStickX;
-    public short LeftStickY;
-    public short RightStickX;
-    public short RightStickY;
-    public byte LeftTrigger;
-    public byte RightTrigger;
-    public GamepadButtons Buttons;
+    public short LeftStickX { get; }
+    public short LeftStickY { get; }
+    public short RightStickX { get; }
+    public short RightStickY { get; }
+    public byte LeftTrigger { get; }
+    public byte RightTrigger { get; }
+    public GamepadButtons Buttons { get; }
 
-    /// <summary>
-    /// Cria um estado a partir de um Gamepad físico (passthrough).
-    /// </summary>
-    public static VirtualControllerState FromGamepad(Gamepad gamepad, short? overrideLeftStickX = null)
+    private VirtualControllerState(
+        short leftStickX, short leftStickY,
+        short rightStickX, short rightStickY,
+        byte leftTrigger, byte rightTrigger,
+        GamepadButtons buttons)
     {
-        return new VirtualControllerState
-        {
-            LeftStickX = overrideLeftStickX ?? gamepad.LeftThumbX,
-            LeftStickY = gamepad.LeftThumbY,
-            RightStickX = gamepad.RightThumbX,
-            RightStickY = gamepad.RightThumbY,
-            LeftTrigger = gamepad.LeftTrigger,
-            RightTrigger = gamepad.RightTrigger,
-            Buttons = gamepad.Buttons
-        };
+        LeftStickX = leftStickX;
+        LeftStickY = leftStickY;
+        RightStickX = rightStickX;
+        RightStickY = rightStickY;
+        LeftTrigger = leftTrigger;
+        RightTrigger = rightTrigger;
+        Buttons = buttons;
     }
 
-    /// <summary>
-    /// Estado vazio (nenhum input).
-    /// </summary>
-    public static VirtualControllerState Empty => new();
+    public static VirtualControllerState FromGamepad(Gamepad gamepad, short? overrideLeftStickX = null)
+    {
+        return new VirtualControllerState(
+            overrideLeftStickX ?? gamepad.LeftThumbX,
+            gamepad.LeftThumbY,
+            gamepad.RightThumbX,
+            gamepad.RightThumbY,
+            gamepad.LeftTrigger,
+            gamepad.RightTrigger,
+            gamepad.Buttons
+        );
+    }
+
+    public static VirtualControllerState Empty => new(0, 0, 0, 0, 0, 0, 0);
 }
