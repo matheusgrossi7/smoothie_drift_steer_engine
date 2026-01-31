@@ -6,7 +6,7 @@ namespace DriftCore.Configuration;
 public static class EngineSettings
 {
     // === Heartbeat ===
-    public const bool HeartbeatEnabled = true;
+    public const bool HeartbeatEnabled = false;
     public static readonly TimeSpan HeartbeatTimeout = TimeSpan.FromSeconds(10);
 
     // === Shutdown ===
