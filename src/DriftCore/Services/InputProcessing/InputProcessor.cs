@@ -70,6 +70,8 @@ public sealed class InputProcessor
         var newPosition = _steeringPosition + (input * maxUnitsPerSecond * speedAdjust * dtSeconds);
         _steeringPosition = Math.Clamp(newPosition, -1.0, 1.0);
 
+        // TODO: Ignorar deadzone FH5: output -0.25..0.25 ele seta como 0, para controle
+
         // Output linear: posição normalizada atual do volante.
         return _steeringPosition;
     }
