@@ -4,16 +4,19 @@ using DriftCore.Models;
 using DriftCore.Services;
 using Microsoft.AspNetCore.Mvc;
 
+// Modo de teste
+bool isTestMode = args.Contains("--test");
+
 var builder = WebApplication.CreateBuilder(args);
+
+// Evita conflito de porta em execuções locais repetidas (especialmente em --test)
+builder.WebHost.UseUrls(isTestMode ? "http://localhost:0" : "http://localhost:5000");
 
 // Registrar Engine
 builder.Services.AddSingleton<DriftEngine>();
 builder.Services.AddHostedService(sp => sp.GetRequiredService<DriftEngine>());
 
 var app = builder.Build();
-
-// Modo de teste
-bool isTestMode = args.Contains("--test");
 
 if (isTestMode)
     ConsoleManager.ShowTestModeBanner();
@@ -46,11 +49,31 @@ app.Lifetime.ApplicationStopped.Register(() => Environment.Exit(0));
 Console.CancelKeyPress += (_, e) =>
 {
     e.Cancel = true;
-    app.Lifetime.StopApplication();
+
+    try
+    {
+        app.Lifetime.StopApplication();
+    }
+    catch (ObjectDisposedException)
+    {
+        // Pode acontecer se o Ctrl+C chegar durante/apos o disposal do host.
+    }
+
     StartForceExitTimer();
 };
 
-app.Run("http://localhost:5000");
+try
+{
+    app.Run();
+}
+catch (TaskCanceledException)
+{
+    // Pode ocorrer se o host for cancelado durante o bind/start.
+}
+catch (OperationCanceledException)
+{
+    // Shutdown/cancel normal.
+}
 
 void StartForceExitTimer()
 {

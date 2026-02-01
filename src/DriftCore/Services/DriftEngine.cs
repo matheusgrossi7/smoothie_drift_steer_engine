@@ -7,7 +7,6 @@ using DriftCore.Services.Input;
 using DriftCore.Services.InputProcessing;
 using DriftCore.Services.Status;
 using DriftCore.Services.VirtualController;
-using DriftCore.Services.Vibration;
 
 namespace DriftCore.Services;
 
@@ -24,8 +23,8 @@ public sealed class DriftEngine : BackgroundService
 
     private DriftConfig _config = new();
     private bool _testMode;
-    private VirtualControllerManager? _virtualController;
-    private VibrationProcessor? _vibrationProcessor;
+    private VirtualWheelManager? _virtualWheel;
+    private uint _activeVJoyDeviceId;
 
     private static readonly List<GameProfile> ImplementedGames = new();
 
@@ -43,7 +42,6 @@ public sealed class DriftEngine : BackgroundService
     protected override async Task ExecuteAsync(CancellationToken stoppingToken)
     {
         Console.WriteLine("[Engine] Iniciando...");
-        _vibrationProcessor = new VibrationProcessor(_testMode);
 
         try
         {
@@ -69,7 +67,7 @@ public sealed class DriftEngine : BackgroundService
 
             TryConnectDriver();
 
-            if (_virtualController?.IsConnected != true)
+            if (_virtualWheel?.IsConnected != true)
             {
                 await Task.Delay(EngineSettings.DisconnectedDelay, token);
                 continue;
@@ -111,44 +109,42 @@ public sealed class DriftEngine : BackgroundService
 
         if (!input.IsConnected)
         {
-            _virtualController?.SendState(VirtualControllerState.Empty);
+            _virtualWheel?.SendState(VirtualWheelState.Empty);
             return;
         }
 
         double processed = _inputProcessor.ProcessSteering(input.Steering);
-        short steeringOutput = (short)(processed * 32767);
-        var state = VirtualControllerState.FromGamepad(input.Gamepad, steeringOutput);
+        var state = VirtualWheelState.FromGamepad(input.Gamepad, processed, config.UseLbAsClutch);
 
-        _virtualController?.SendState(state);
+        _virtualWheel?.SendState(state);
     }
 
     private void TryConnectDriver()
     {
-        if (_virtualController?.IsConnected == true) return;
+        if (_virtualWheel?.IsConnected == true) return;
         if (!_driverRetryTimer.TryElapse()) return;
         if (_shutdown.IsShuttingDown) return;
 
-        _virtualController?.Dispose();
-        _virtualController = new VirtualControllerManager();
+        var config = Volatile.Read(ref _config);
+        var desiredDeviceId = (uint)Math.Clamp(config.VJoyDeviceId, 1, 16);
 
-        if (_virtualController.Initialize())
-            _virtualController.VibrationReceived += OnVibrationReceived;
+        if (_virtualWheel != null && _activeVJoyDeviceId != desiredDeviceId)
+        {
+            _virtualWheel.Dispose();
+            _virtualWheel = null;
+        }
+
+        _virtualWheel?.Dispose();
+        _virtualWheel = new VirtualWheelManager(desiredDeviceId);
+        _activeVJoyDeviceId = desiredDeviceId;
+
+        _virtualWheel.Initialize();
     }
 
     private void Cleanup()
     {
-        _virtualController?.Dispose();
-        _virtualController = null;
-    }
-
-    #endregion
-
-    #region Vibration
-
-    private void OnVibrationReceived(object? sender, VibrationEventArgs e)
-    {
-        var config = Volatile.Read(ref _config);
-        _vibrationProcessor?.Process((int)config.SelectedInputDevice, e.LargeMotor, e.SmallMotor);
+        _virtualWheel?.Dispose();
+        _virtualWheel = null;
     }
 
     #endregion

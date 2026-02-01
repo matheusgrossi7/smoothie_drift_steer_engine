@@ -13,6 +13,16 @@ public sealed class DriftConfig
     public InputDeviceType SelectedInputDevice { get; set; } = InputDeviceType.Gamepad0;
 
     /// <summary>
+    /// vJoy virtual device id to use as the wheel output (typically 1).
+    /// </summary>
+    public int VJoyDeviceId { get; set; } = 1;
+
+    /// <summary>
+    /// For FH5 manual w/ clutch: map the Xbox controller LB (LeftShoulder) to the wheel clutch axis (Rx).
+    /// </summary>
+    public bool UseLbAsClutch { get; set; } = true;
+
+    /// <summary>
     /// Enables or disables steering smoothing.
     /// </summary>
     public bool IsSmoothingEnabled { get; set; } = true;

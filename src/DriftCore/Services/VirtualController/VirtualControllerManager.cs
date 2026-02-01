@@ -1,90 +1,97 @@
-using Nefarius.ViGEm.Client;
-using Nefarius.ViGEm.Client.Exceptions;
-using Nefarius.ViGEm.Client.Targets;
-using Nefarius.ViGEm.Client.Targets.Xbox360;
-using Vortice.XInput;
+using System.Reflection;
+using System.Runtime.InteropServices;
 
 namespace DriftCore.Services.VirtualController;
 
 /// <summary>
-/// Gerencia o controle virtual Xbox 360 via ViGEm.
+/// Gerencia um volante virtual via vJoy (DirectInput).
 /// </summary>
-public sealed class VirtualControllerManager : IDisposable
+public sealed class VirtualWheelManager : IDisposable
 {
-    private ViGEmClient? _client;
-    private IXbox360Controller? _controller;
     private bool _disposed;
+    private readonly uint _deviceId;
+    private bool _acquired;
 
-    public bool IsConnected => _controller != null && !_disposed;
+    public bool IsConnected => _acquired && !_disposed;
 
-    public event EventHandler<VibrationEventArgs>? VibrationReceived;
+    public VirtualWheelManager(uint deviceId = 1)
+    {
+        _deviceId = deviceId;
+    }
 
     public bool Initialize()
     {
         try
         {
-            Console.WriteLine("[VirtualController] Conectando ao ViGEm...");
-            _client = new ViGEmClient();
-            _controller = _client.CreateXbox360Controller();
-            _controller.FeedbackReceived += OnFeedbackReceived;
-            _controller.Connect();
-            Console.WriteLine("[VirtualController] Conectado!");
+            Console.WriteLine($"[VirtualWheel] Inicializando vJoy (DeviceId={_deviceId})...");
+
+            if (!VJoyNative.vJoyEnabled())
+            {
+                Console.WriteLine("[ERRO] vJoy não está habilitado. Instale/ative o driver vJoy.");
+                return false;
+            }
+
+            var status = VJoyNative.GetVJDStatus(_deviceId);
+            if (status is VjdStat.VJD_STAT_MISS)
+            {
+                Console.WriteLine("[ERRO] Dispositivo vJoy não existe (VJD_STAT_MISS). Configure um Device no vJoyConf.");
+                return false;
+            }
+
+            if (status is VjdStat.VJD_STAT_BUSY)
+            {
+                Console.WriteLine("[ERRO] Dispositivo vJoy está ocupado (VJD_STAT_BUSY).");
+                return false;
+            }
+
+            if (!VJoyNative.AcquireVJD(_deviceId))
+            {
+                Console.WriteLine("[ERRO] Falha ao adquirir o dispositivo vJoy.");
+                return false;
+            }
+
+            _acquired = true;
+            VJoyNative.ResetVJD(_deviceId);
+            Console.WriteLine("[VirtualWheel] Conectado!");
             return true;
-        }
-        catch (VigemBusNotFoundException)
-        {
-            Console.WriteLine("[ERRO] Driver ViGEmBus não encontrado.");
-            return false;
         }
         catch (DllNotFoundException)
         {
-            Console.WriteLine("[ERRO] DLL ViGEm não encontrada.");
+            Console.WriteLine("[ERRO] vJoyInterface.dll não encontrada. Verifique instalação do vJoy e arquitetura x64.");
             return false;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[ERRO] Falha ViGEm: {ex.Message}");
+            Console.WriteLine($"[ERRO] Falha vJoy: {ex.Message}");
             return false;
         }
     }
 
-    public void SendState(VirtualControllerState state)
+    public void SendState(VirtualWheelState state)
     {
-        if (_controller == null || _disposed) return;
+        if (!_acquired || _disposed) return;
 
-        _controller.SetAxisValue(Xbox360Axis.LeftThumbX, state.LeftStickX);
-        _controller.SetAxisValue(Xbox360Axis.LeftThumbY, state.LeftStickY);
-        _controller.SetAxisValue(Xbox360Axis.RightThumbX, state.RightStickX);
-        _controller.SetAxisValue(Xbox360Axis.RightThumbY, state.RightStickY);
-        _controller.SetSliderValue(Xbox360Slider.LeftTrigger, state.LeftTrigger);
-        _controller.SetSliderValue(Xbox360Slider.RightTrigger, state.RightTrigger);
+        // Eixos (padrão sugerido)
+        VJoyNative.SetAxis(state.SteeringX, _deviceId, HidUsage.HID_USAGE_X);
+        VJoyNative.SetAxis(state.BrakeY, _deviceId, HidUsage.HID_USAGE_Y);
+        VJoyNative.SetAxis(state.ThrottleZ, _deviceId, HidUsage.HID_USAGE_Z);
+        VJoyNative.SetAxis(state.ClutchRx, _deviceId, HidUsage.HID_USAGE_RX);
+
+        // POV contínuo (1)
+        VJoyNative.SetContPov(state.Pov1, _deviceId, 1);
+
+        // Botões (1..32)
         SetButtons(state.Buttons);
-        _controller.SubmitReport();
     }
 
-    private void SetButtons(GamepadButtons buttons)
+    private void SetButtons(WheelButtons buttons)
     {
-        if (_controller == null) return;
-
-        _controller.SetButtonState(Xbox360Button.A, buttons.HasFlag(GamepadButtons.A));
-        _controller.SetButtonState(Xbox360Button.B, buttons.HasFlag(GamepadButtons.B));
-        _controller.SetButtonState(Xbox360Button.X, buttons.HasFlag(GamepadButtons.X));
-        _controller.SetButtonState(Xbox360Button.Y, buttons.HasFlag(GamepadButtons.Y));
-        _controller.SetButtonState(Xbox360Button.LeftShoulder, buttons.HasFlag(GamepadButtons.LeftShoulder));
-        _controller.SetButtonState(Xbox360Button.RightShoulder, buttons.HasFlag(GamepadButtons.RightShoulder));
-        _controller.SetButtonState(Xbox360Button.Back, buttons.HasFlag(GamepadButtons.Back));
-        _controller.SetButtonState(Xbox360Button.Start, buttons.HasFlag(GamepadButtons.Start));
-        _controller.SetButtonState(Xbox360Button.LeftThumb, buttons.HasFlag(GamepadButtons.LeftThumb));
-        _controller.SetButtonState(Xbox360Button.RightThumb, buttons.HasFlag(GamepadButtons.RightThumb));
-        _controller.SetButtonState(Xbox360Button.Up, buttons.HasFlag(GamepadButtons.DPadUp));
-        _controller.SetButtonState(Xbox360Button.Down, buttons.HasFlag(GamepadButtons.DPadDown));
-        _controller.SetButtonState(Xbox360Button.Left, buttons.HasFlag(GamepadButtons.DPadLeft));
-        _controller.SetButtonState(Xbox360Button.Right, buttons.HasFlag(GamepadButtons.DPadRight));
-    }
-
-    private void OnFeedbackReceived(object sender, Xbox360FeedbackReceivedEventArgs e)
-    {
-        VibrationReceived?.Invoke(this, new VibrationEventArgs(e.LargeMotor, e.SmallMotor));
+        uint mask = (uint)buttons;
+        for (uint i = 0; i < 32; i++)
+        {
+            bool pressed = (mask & (1u << (int)i)) != 0;
+            VJoyNative.SetBtn(pressed, _deviceId, (byte)(i + 1));
+        }
     }
 
     public void Dispose()
@@ -92,44 +99,107 @@ public sealed class VirtualControllerManager : IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        Console.WriteLine("[VirtualController] Desconectando...");
+        Console.WriteLine("[VirtualWheel] Desconectando...");
 
         try
         {
-            if (_controller != null)
+            if (_acquired)
             {
-                _controller.FeedbackReceived -= OnFeedbackReceived;
-                _controller.Disconnect();
-                _controller = null;
+                VJoyNative.ResetVJD(_deviceId);
+                VJoyNative.RelinquishVJD(_deviceId);
+                _acquired = false;
             }
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[VirtualController] Erro: {ex.Message}");
+            Console.WriteLine($"[VirtualWheel] Erro: {ex.Message}");
         }
 
-        try
-        {
-            _client?.Dispose();
-            _client = null;
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"[VirtualController] Erro cliente: {ex.Message}");
-        }
-
-        Console.WriteLine("[VirtualController] Desconectado.");
+        Console.WriteLine("[VirtualWheel] Desconectado.");
     }
 }
 
-public sealed class VibrationEventArgs : EventArgs
+internal enum VjdStat : int
 {
-    public byte LargeMotor { get; }
-    public byte SmallMotor { get; }
+    VJD_STAT_OWN = 0,
+    VJD_STAT_FREE = 1,
+    VJD_STAT_BUSY = 2,
+    VJD_STAT_MISS = 3,
+    VJD_STAT_UNKN = 4,
+}
 
-    public VibrationEventArgs(byte large, byte small)
+internal static class HidUsage
+{
+    // HID usage IDs (Generic Desktop)
+    public const uint HID_USAGE_X = 0x30;
+    public const uint HID_USAGE_Y = 0x31;
+    public const uint HID_USAGE_Z = 0x32;
+    public const uint HID_USAGE_RX = 0x33;
+}
+
+internal static class VJoyNative
+{
+    private const string DllName = "vJoyInterface.dll";
+
+    static VJoyNative()
     {
-        LargeMotor = large;
-        SmallMotor = small;
+        NativeLibrary.SetDllImportResolver(typeof(VJoyNative).Assembly, Resolve);
     }
+
+    private static IntPtr Resolve(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
+    {
+        if (!string.Equals(libraryName, DllName, StringComparison.OrdinalIgnoreCase))
+            return IntPtr.Zero;
+
+        // 1) Local (next to executable)
+        var local = Path.Combine(AppContext.BaseDirectory, DllName);
+        if (File.Exists(local))
+            return NativeLibrary.Load(local);
+
+        // 2) Common vJoy install locations
+        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
+        var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
+
+        var candidates = new[]
+        {
+            Path.Combine(programFiles, "vJoy", "x64", DllName),
+            Path.Combine(programFilesX86, "vJoy", "x64", DllName),
+            Path.Combine(programFiles, "vJoy", DllName),
+            Path.Combine(programFilesX86, "vJoy", DllName),
+        };
+
+        foreach (var path in candidates)
+        {
+            if (File.Exists(path))
+                return NativeLibrary.Load(path);
+        }
+
+        return IntPtr.Zero;
+    }
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern bool vJoyEnabled();
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern bool AcquireVJD(uint rID);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern void RelinquishVJD(uint rID);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern bool ResetVJD(uint rID);
+
+    [DllImport(DllName, EntryPoint = "GetVJDStatus", CallingConvention = CallingConvention.Cdecl)]
+    private static extern int GetVJDStatusRaw(uint rID);
+
+    public static VjdStat GetVJDStatus(uint rID) => (VjdStat)GetVJDStatusRaw(rID);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern bool SetAxis(int value, uint rID, uint axis);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern bool SetBtn(bool value, uint rID, byte nBtn);
+
+    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
+    public static extern bool SetContPov(int value, uint rID, byte nPov);
 }

@@ -3,45 +3,132 @@ using Vortice.XInput;
 namespace DriftCore.Services.VirtualController;
 
 /// <summary>
-/// Estado imutável do controle virtual a ser enviado para o jogo.
+/// Estado imutável do volante virtual (vJoy) a ser enviado para o jogo.
 /// </summary>
-public readonly struct VirtualControllerState
+/// <remarks>
+/// vJoy usa, por padrão, eixos no intervalo 0..32768.
+/// Steering aqui é X (0=esquerda, 16384=centro, 32768=direita).
+/// </remarks>
+public readonly struct VirtualWheelState
 {
-    public short LeftStickX { get; }
-    public short LeftStickY { get; }
-    public short RightStickX { get; }
-    public short RightStickY { get; }
-    public byte LeftTrigger { get; }
-    public byte RightTrigger { get; }
-    public GamepadButtons Buttons { get; }
+    public int SteeringX { get; }
+    public int BrakeY { get; }
+    public int ThrottleZ { get; }
+    public int ClutchRx { get; }
 
-    private VirtualControllerState(
-        short leftStickX, short leftStickY,
-        short rightStickX, short rightStickY,
-        byte leftTrigger, byte rightTrigger,
-        GamepadButtons buttons)
+    /// <summary>
+    /// POV contínuo em centésimos de grau (0..35900) ou -1 para neutro.
+    /// </summary>
+    public int Pov1 { get; }
+
+    public WheelButtons Buttons { get; }
+
+    private VirtualWheelState(int steeringX, int brakeY, int throttleZ, int clutchRx, int pov1, WheelButtons buttons)
     {
-        LeftStickX = leftStickX;
-        LeftStickY = leftStickY;
-        RightStickX = rightStickX;
-        RightStickY = rightStickY;
-        LeftTrigger = leftTrigger;
-        RightTrigger = rightTrigger;
+        SteeringX = ClampAxis(steeringX);
+        BrakeY = ClampAxis(brakeY);
+        ThrottleZ = ClampAxis(throttleZ);
+        ClutchRx = ClampAxis(clutchRx);
+        Pov1 = pov1;
         Buttons = buttons;
     }
 
-    public static VirtualControllerState FromGamepad(Gamepad gamepad, short? overrideLeftStickX = null)
+    public static VirtualWheelState FromGamepad(Gamepad gamepad, double steeringNormalized, bool useLbAsClutch)
     {
-        return new VirtualControllerState(
-            overrideLeftStickX ?? gamepad.LeftThumbX,
-            gamepad.LeftThumbY,
-            gamepad.RightThumbX,
-            gamepad.RightThumbY,
-            gamepad.LeftTrigger,
-            gamepad.RightTrigger,
-            gamepad.Buttons
-        );
+        // Steering: -1..1 -> 0..32768
+        var steeringX = AxisFromSignedNormalized(steeringNormalized);
+
+        // Pedais: 0..255 -> 0..32768
+        var brakeY = AxisFromUnsignedByte(gamepad.LeftTrigger);
+        var throttleZ = AxisFromUnsignedByte(gamepad.RightTrigger);
+
+        // Embreagem (clutch): por padrão LB (digital) -> eixo Rx (0 ou 32768)
+        var clutchRx = useLbAsClutch && gamepad.Buttons.HasFlag(GamepadButtons.LeftShoulder) ? 32768 : 0;
+
+        // D-Pad -> POV contínuo (graus * 100)
+        int pov1 = PovFromDpad(gamepad.Buttons);
+
+        var buttons = WheelButtonMapper.FromGamepadButtons(gamepad.Buttons, useLbAsClutch);
+        return new VirtualWheelState(steeringX, brakeY, throttleZ, clutchRx, pov1, buttons);
     }
 
-    public static VirtualControllerState Empty => new(0, 0, 0, 0, 0, 0, 0);
+    public static VirtualWheelState Empty => new(16384, 0, 0, 0, -1, WheelButtons.None);
+
+    private static int ClampAxis(int value) => Math.Clamp(value, 0, 32768);
+
+    private static int AxisFromSignedNormalized(double value)
+    {
+        value = Math.Clamp(value, -1.0, 1.0);
+        // [-1..1] => [0..32768]
+        return ClampAxis((int)Math.Round((value + 1.0) * 16384.0));
+    }
+
+    private static int AxisFromUnsignedByte(byte value)
+    {
+        // [0..255] => [0..32768]
+        return ClampAxis((int)Math.Round(value * (32768.0 / 255.0)));
+    }
+
+    private static int PovFromDpad(GamepadButtons buttons)
+    {
+        bool up = buttons.HasFlag(GamepadButtons.DPadUp);
+        bool down = buttons.HasFlag(GamepadButtons.DPadDown);
+        bool left = buttons.HasFlag(GamepadButtons.DPadLeft);
+        bool right = buttons.HasFlag(GamepadButtons.DPadRight);
+
+        if (!up && !down && !left && !right) return -1;
+
+        // vJoy POV contínuo: 0=up, 9000=right, 18000=down, 27000=left
+        if (up && right) return 4500;
+        if (right && down) return 13500;
+        if (down && left) return 22500;
+        if (left && up) return 31500;
+        if (up) return 0;
+        if (right) return 9000;
+        if (down) return 18000;
+        return 27000;
+    }
+}
+
+[Flags]
+public enum WheelButtons : uint
+{
+    None = 0,
+
+    Button1 = 1u << 0,
+    Button2 = 1u << 1,
+    Button3 = 1u << 2,
+    Button4 = 1u << 3,
+    Button5 = 1u << 4,
+    Button6 = 1u << 5,
+    Button7 = 1u << 6,
+    Button8 = 1u << 7,
+    Button9 = 1u << 8,
+    Button10 = 1u << 9,
+    Button11 = 1u << 10,
+    Button12 = 1u << 11,
+
+    // Reservado: até 32 botões aqui, vJoy suporta bem mais.
+}
+
+internal static class WheelButtonMapper
+{
+    public static WheelButtons FromGamepadButtons(GamepadButtons buttons, bool useLbAsClutch)
+    {
+        WheelButtons result = WheelButtons.None;
+
+        // Mapeamento simples: A/B/X/Y/LB/RB/Back/Start/etc -> botões 1..12
+        if (buttons.HasFlag(GamepadButtons.A)) result |= WheelButtons.Button1;
+        if (buttons.HasFlag(GamepadButtons.B)) result |= WheelButtons.Button2;
+        if (buttons.HasFlag(GamepadButtons.X)) result |= WheelButtons.Button3;
+        if (buttons.HasFlag(GamepadButtons.Y)) result |= WheelButtons.Button4;
+        if (buttons.HasFlag(GamepadButtons.LeftShoulder)) result |= WheelButtons.Button5;
+        if (buttons.HasFlag(GamepadButtons.RightShoulder)) result |= WheelButtons.Button6;
+        if (buttons.HasFlag(GamepadButtons.Back)) result |= WheelButtons.Button7;
+        if (buttons.HasFlag(GamepadButtons.Start)) result |= WheelButtons.Button8;
+        if (buttons.HasFlag(GamepadButtons.LeftThumb)) result |= WheelButtons.Button9;
+        if (buttons.HasFlag(GamepadButtons.RightThumb)) result |= WheelButtons.Button10;
+
+        return result;
+    }
 }
