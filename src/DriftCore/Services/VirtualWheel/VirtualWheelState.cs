@@ -1,6 +1,6 @@
 using Vortice.XInput;
 
-namespace DriftCore.Services.VirtualController;
+namespace DriftCore.Services.VirtualWheel;
 
 /// <summary>
 /// Estado imutável do volante virtual (vJoy) a ser enviado para o jogo.
@@ -42,10 +42,12 @@ public readonly struct VirtualWheelState
         var brakeY = AxisFromUnsignedByte(gamepad.LeftTrigger);
         var throttleZ = AxisFromUnsignedByte(gamepad.RightTrigger);
 
-        // Embreagem (clutch): analógico direito (eixo Y), somente metade de cima.
-        // - Centro/baixo: 0
-        // - Acima de 50% para cima: escala 0..32768
-        var clutchRx = useLbAsClutch ? AxisFromRightStickUpHalf(gamepad.RightThumbY) : 0;
+        // Embreagem (clutch):
+        // - Se UseLbAsClutch=true, LB vira embreagem digital (0/100%).
+        // - Caso contrário, usa analógico direito (eixo Y) apenas metade superior.
+        var clutchRx = useLbAsClutch
+            ? AxisFromDigitalButton(gamepad.Buttons.HasFlag(GamepadButtons.LeftShoulder))
+            : AxisFromRightStickUpHalf(gamepad.RightThumbY);
 
         // D-Pad -> POV contínuo (graus * 100)
         int pov1 = PovFromDpad(gamepad.Buttons);
@@ -85,6 +87,8 @@ public readonly struct VirtualWheelState
         double scaled = (up - threshold) / (1.0 - threshold); // 0..1
         return ClampAxis((int)Math.Round(scaled * 32768.0));
     }
+
+    private static int AxisFromDigitalButton(bool pressed) => pressed ? 32768 : 0;
 
     private static int PovFromDpad(GamepadButtons buttons)
     {
@@ -151,7 +155,7 @@ internal static class WheelButtonMapper
         if (buttons.HasFlag(GamepadButtons.Y)) result |= WheelButtons.Button4;
 
         // Shoulder
-        if (buttons.HasFlag(GamepadButtons.LeftShoulder)) result |= WheelButtons.Button5;
+        if (!useLbAsClutch && buttons.HasFlag(GamepadButtons.LeftShoulder)) result |= WheelButtons.Button5;
         if (buttons.HasFlag(GamepadButtons.RightShoulder)) result |= WheelButtons.Button6;
 
         // Menu/View

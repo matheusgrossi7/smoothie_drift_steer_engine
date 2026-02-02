@@ -1,7 +1,5 @@
 using System.Diagnostics;
 using System.Threading;
-using DriftCore.Configuration;
-
 namespace DriftCore.Services.Heartbeat;
 
 /// <summary>
@@ -9,17 +7,28 @@ namespace DriftCore.Services.Heartbeat;
 /// </summary>
 public sealed class HeartbeatMonitor
 {
-    private readonly bool _enabled;
-    private readonly long _timeoutTicks;
+    private long _timeoutTicks;
+    private int _enabled;
     private long _lastTicks;
 
-    public HeartbeatMonitor() : this(EngineSettings.HeartbeatEnabled, EngineSettings.HeartbeatTimeout) { }
-
-    public HeartbeatMonitor(bool enabled, TimeSpan timeout)
+    public HeartbeatMonitor()
     {
-        _enabled = enabled;
-        _timeoutTicks = (long)(Stopwatch.Frequency * timeout.TotalSeconds);
+        UpdateSettings(false, TimeSpan.FromSeconds(10));
         _lastTicks = Stopwatch.GetTimestamp();
+    }
+
+    public void UpdateSettings(bool enabled, TimeSpan timeout)
+    {
+        Volatile.Write(ref _enabled, enabled ? 1 : 0);
+
+        if (enabled)
+        {
+            Interlocked.Exchange(ref _lastTicks, Stopwatch.GetTimestamp());
+        }
+
+        var seconds = Math.Max(timeout.TotalSeconds, 0);
+        var ticks = (long)(Stopwatch.Frequency * seconds);
+        Volatile.Write(ref _timeoutTicks, ticks);
     }
 
     public void Register()
@@ -29,9 +38,10 @@ public sealed class HeartbeatMonitor
 
     public bool IsExpired()
     {
-        if (!_enabled) return false;
+        if (Volatile.Read(ref _enabled) == 0) return false;
 
         long last = Volatile.Read(ref _lastTicks);
-        return Stopwatch.GetTimestamp() - last > _timeoutTicks;
+        long timeout = Volatile.Read(ref _timeoutTicks);
+        return Stopwatch.GetTimestamp() - last > timeout;
     }
 }

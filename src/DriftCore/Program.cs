@@ -1,50 +1,24 @@
 using DriftCore.Configuration;
 using DriftCore.Infrastructure;
-using DriftCore.Models;
 using DriftCore.Services;
-using Microsoft.AspNetCore.Mvc;
+using System.Text.Json;
 
 // Modo de teste
 bool isTestMode = args.Contains("--test");
 
-var builder = WebApplication.CreateBuilder(args);
+var cts = new CancellationTokenSource();
+var engineOptions = LoadOptions();
+var engine = new DriftEngine(engineOptions, () => cts.Cancel());
 
-// Evita conflito de porta em execuções locais repetidas (especialmente em --test)
-builder.WebHost.UseUrls(isTestMode ? "http://localhost:0" : "http://localhost:5000");
-
-// Registrar Engine
-builder.Services.AddSingleton<DriftEngine>();
-builder.Services.AddHostedService(sp => sp.GetRequiredService<DriftEngine>());
-
-var app = builder.Build();
-
-if (isTestMode)
-    ConsoleManager.ShowTestModeBanner();
-else
-    ConsoleManager.HideConsole();
-
-// API Endpoints
-app.MapGet("/api/heartbeat", (DriftEngine engine) =>
+if (OperatingSystem.IsWindows())
 {
-    engine.RegisterHeartbeat();
-    return Results.Ok("Alive");
-});
+    if (isTestMode)
+        ConsoleManager.ShowTestModeBanner();
+    else
+        ConsoleManager.HideConsole();
+}
 
-app.MapPost("/api/config", ([FromBody] DriftConfig config, DriftEngine engine) =>
-{
-    engine.UpdateConfig(config);
-    return Results.Ok();
-});
-
-app.MapGet("/api/status", (DriftEngine engine) => Results.Ok(engine.GetStatus()));
-
-// Inicialização
-var engine = app.Services.GetRequiredService<DriftEngine>();
 engine.SetTestMode(isTestMode);
-
-// Shutdown handlers
-app.Lifetime.ApplicationStopping.Register(engine.Shutdown);
-app.Lifetime.ApplicationStopped.Register(() => Environment.Exit(0));
 
 Console.CancelKeyPress += (_, e) =>
 {
@@ -52,35 +26,52 @@ Console.CancelKeyPress += (_, e) =>
 
     try
     {
-        app.Lifetime.StopApplication();
+        engine.ForceShutdown("Ctrl+C");
     }
     catch (ObjectDisposedException)
     {
         // Pode acontecer se o Ctrl+C chegar durante/apos o disposal do host.
     }
-
-    StartForceExitTimer();
 };
 
 try
 {
-    app.Run();
+    await engine.RunAsync(cts.Token);
 }
 catch (TaskCanceledException)
 {
-    // Pode ocorrer se o host for cancelado durante o bind/start.
+    // Cancelamento normal.
 }
 catch (OperationCanceledException)
 {
     // Shutdown/cancel normal.
 }
 
-void StartForceExitTimer()
+EngineOptions LoadOptions()
 {
-    _ = Task.Run(async () =>
+    var path = Path.Combine(AppContext.BaseDirectory, "appSettings.json");
+    if (!File.Exists(path))
+        return new EngineOptions();
+
+    try
     {
-        await Task.Delay(EngineSettings.ShutdownTimeout);
-        Console.WriteLine("[Shutdown] Timeout. Forçando encerramento...");
-        Environment.Exit(0);
-    });
+        var json = File.ReadAllText(path);
+        var settings = JsonSerializer.Deserialize<AppSettings>(json, new JsonSerializerOptions
+        {
+            PropertyNameCaseInsensitive = true
+        });
+
+        return settings?.DriftEngine ?? new EngineOptions();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"[Config] Falha ao ler appSettings.json: {ex.Message}");
+        return new EngineOptions();
+    }
 }
+
+sealed class AppSettings
+{
+    public EngineOptions DriftEngine { get; set; } = new();
+}
+

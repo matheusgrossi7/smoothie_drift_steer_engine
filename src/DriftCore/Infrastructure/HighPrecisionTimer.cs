@@ -1,5 +1,6 @@
+using System;
 using System.Diagnostics;
-using DriftCore.Configuration;
+using System.Threading;
 
 namespace DriftCore.Infrastructure;
 
@@ -8,7 +9,7 @@ namespace DriftCore.Infrastructure;
 /// </summary>
 public sealed class HighPrecisionTimer
 {
-    private readonly long _intervalTicks;
+    private long _intervalTicks;
     private long _lastTicks;
 
     public HighPrecisionTimer(TimeSpan interval)
@@ -23,11 +24,24 @@ public sealed class HighPrecisionTimer
     public bool TryElapse()
     {
         long now = Stopwatch.GetTimestamp();
-        if (now - _lastTicks < _intervalTicks)
+        long last = Volatile.Read(ref _lastTicks);
+        long interval = Volatile.Read(ref _intervalTicks);
+
+        if (now - last < interval)
             return false;
 
-        _lastTicks = now;
+        Volatile.Write(ref _lastTicks, now);
         return true;
+    }
+
+    /// <summary>
+    /// Atualiza o intervalo de disparo do timer.
+    /// </summary>
+    public void UpdateInterval(TimeSpan interval)
+    {
+        var ticks = (long)(Stopwatch.Frequency * Math.Max(interval.TotalSeconds, 0));
+        Volatile.Write(ref _intervalTicks, ticks);
+        Volatile.Write(ref _lastTicks, 0);
     }
 
     /// <summary>
@@ -35,6 +49,6 @@ public sealed class HighPrecisionTimer
     /// </summary>
     public void Reset()
     {
-        _lastTicks = Stopwatch.GetTimestamp();
+        Volatile.Write(ref _lastTicks, Stopwatch.GetTimestamp());
     }
 }

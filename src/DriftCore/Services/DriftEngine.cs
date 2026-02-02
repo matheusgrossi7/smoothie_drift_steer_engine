@@ -1,51 +1,47 @@
 using System.Threading;
 using DriftCore.Configuration;
 using DriftCore.Infrastructure;
-using DriftCore.Models;
 using DriftCore.Services.Heartbeat;
 using DriftCore.Services.Input;
 using DriftCore.Services.InputProcessing;
-using DriftCore.Services.Status;
-using DriftCore.Services.VirtualController;
+using DriftCore.Services.VirtualWheel;
 
 namespace DriftCore.Services;
 
 /// <summary>
 /// Motor principal do Drift. Orquestra leitura de input, processamento e saída.
 /// </summary>
-public sealed class DriftEngine : BackgroundService
+public sealed class DriftEngine
 {
     private readonly ShutdownManager _shutdown;
     private readonly HeartbeatMonitor _heartbeat;
-    private readonly EngineStatusProvider _statusProvider;
     private readonly InputProcessor _inputProcessor;
     private readonly HighPrecisionTimer _driverRetryTimer;
 
-    private DriftConfig _config = new();
+    private EngineOptions _config = new();
     private bool _testMode;
     private VirtualWheelManager? _virtualWheel;
     private uint _activeVJoyDeviceId;
 
-    private static readonly List<GameProfile> ImplementedGames = new();
-
-    public DriftEngine(IHostApplicationLifetime lifetime)
+    public DriftEngine(EngineOptions options, Action stopApplication)
     {
-        _shutdown = new ShutdownManager(lifetime);
+        _shutdown = new ShutdownManager(stopApplication, () => EngineDefaults.ShutdownTimeout);
         _heartbeat = new HeartbeatMonitor();
-        _statusProvider = new EngineStatusProvider(ImplementedGames);
         _inputProcessor = new InputProcessor();
-        _driverRetryTimer = new HighPrecisionTimer(EngineSettings.DriverRetryInterval);
+        _driverRetryTimer = new HighPrecisionTimer(EngineDefaults.DriverRetryInterval);
+
+        ApplyConfig(options);
     }
 
     #region Lifecycle
 
-    protected override async Task ExecuteAsync(CancellationToken stoppingToken)
+    public Task RunAsync(CancellationToken stoppingToken)
     {
         Console.WriteLine("[Engine] Iniciando...");
 
         try
         {
-            await RunMainLoop(stoppingToken);
+            RunMainLoop(stoppingToken);
         }
         catch (OperationCanceledException) { /* Normal shutdown */ }
         finally
@@ -53,9 +49,11 @@ public sealed class DriftEngine : BackgroundService
             Cleanup();
             Console.WriteLine("[Engine] Encerrado.");
         }
+
+        return Task.CompletedTask;
     }
 
-    private async Task RunMainLoop(CancellationToken token)
+    private void RunMainLoop(CancellationToken token)
     {
         while (!token.IsCancellationRequested && !_shutdown.IsShuttingDown)
         {
@@ -69,31 +67,13 @@ public sealed class DriftEngine : BackgroundService
 
             if (_virtualWheel?.IsConnected != true)
             {
-                await Task.Delay(EngineSettings.DisconnectedDelay, token);
+                if (token.WaitHandle.WaitOne(EngineDefaults.DisconnectedDelay))
+                    break;
                 continue;
             }
 
             ProcessFrame();
             LogDebug();
-
-            Thread.Yield();
-        }
-    }
-
-    public override async Task StopAsync(CancellationToken cancellationToken)
-    {
-        Console.WriteLine("[Engine] Parando...");
-
-        using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
-        cts.CancelAfter(EngineSettings.StopAsyncTimeout);
-
-        try
-        {
-            await base.StopAsync(cts.Token);
-        }
-        catch (OperationCanceledException)
-        {
-            Console.WriteLine("[Engine] Timeout na parada.");
         }
     }
 
@@ -104,11 +84,11 @@ public sealed class DriftEngine : BackgroundService
     private void ProcessFrame()
     {
         var config = Volatile.Read(ref _config);
-        int gamepadIndex = (int)config.SelectedInputDevice;
-        var input = GamepadReader.Read(gamepadIndex);
+        var input = GamepadReader.Read(config.InputDeviceIndex);
 
         if (!input.IsConnected)
         {
+            _inputProcessor.Reset();
             _virtualWheel?.SendState(VirtualWheelState.Empty);
             return;
         }
@@ -157,20 +137,7 @@ public sealed class DriftEngine : BackgroundService
 
     public void Shutdown() => _shutdown.RequestShutdown("Shutdown solicitado");
 
-    public void UpdateConfig(DriftConfig newConfig)
-    {
-        Volatile.Write(ref _config, newConfig);
-        _inputProcessor.UpdateSmoothing(newConfig.IsSmoothingEnabled, newConfig.SmoothingValue);
-
-        if (_testMode)
-            Console.WriteLine($"[Config] Input: {newConfig.SelectedInputDevice}");
-    }
-
-    public EngineStatus GetStatus()
-    {
-        var config = Volatile.Read(ref _config);
-        return _statusProvider.BuildStatus(config.SelectedInputDevice, config.SelectedGame);
-    }
+    public void ForceShutdown(string reason) => _shutdown.RequestForcedShutdown(reason);
 
     #endregion
 
@@ -181,14 +148,45 @@ public sealed class DriftEngine : BackgroundService
     private void LogDebug()
     {
         if (!_testMode) return;
-        if (++_debugCounter < EngineSettings.DebugLogInterval) return;
+
+        var interval = EngineDefaults.DebugLogInterval;
+        if (interval <= 0) return;
+        if (++_debugCounter < interval) return;
 
         _debugCounter = 0;
         var config = Volatile.Read(ref _config);
-        var input = GamepadReader.Read((int)config.SelectedInputDevice);
+        var input = GamepadReader.Read(config.InputDeviceIndex);
         double processed = _inputProcessor.ProcessSteering(input.Steering);
 
-        Console.WriteLine($"[IO] Gamepad{(int)config.SelectedInputDevice} | Connected: {input.IsConnected} | Raw: {input.Steering:F3} | Processed: {processed:F3}");
+        Console.WriteLine($"[IO] Gamepad{config.InputDeviceIndex} | Connected: {input.IsConnected} | Raw: {input.Steering:F3} | Processed: {processed:F3} | vJoy: {_virtualWheel?.IsConnected == true}");
+    }
+
+    private void ApplyConfig(EngineOptions config)
+    {
+        var normalized = NormalizeOptions(config);
+
+        Volatile.Write(ref _config, normalized);
+        _inputProcessor.UpdateSmoothing(normalized.SmoothingEnabled, normalized.SmoothingValue);
+        _heartbeat.UpdateSettings(EngineDefaults.HeartbeatEnabled, EngineDefaults.HeartbeatTimeout);
+        _driverRetryTimer.UpdateInterval(EngineDefaults.DriverRetryInterval);
+
+        if (_testMode)
+        {
+            Console.WriteLine($"[Config] Input={normalized.InputDeviceIndex} vJoy={normalized.VJoyDeviceId} Smooth={(normalized.SmoothingEnabled ? normalized.SmoothingValue : 0)}");
+        }
+    }
+
+    private static EngineOptions NormalizeOptions(EngineOptions input)
+    {
+        return new EngineOptions
+        {
+            InputDeviceIndex = Math.Clamp(input.InputDeviceIndex, 0, 3),
+            VJoyDeviceId = Math.Clamp(input.VJoyDeviceId, 1, 16),
+            UseLbAsClutch = input.UseLbAsClutch,
+
+            SmoothingEnabled = input.SmoothingEnabled,
+            SmoothingValue = Math.Clamp(input.SmoothingValue, 0, 100)
+        };
     }
 
     #endregion

@@ -1,7 +1,7 @@
 using System.Reflection;
 using System.Runtime.InteropServices;
 
-namespace DriftCore.Services.VirtualController;
+namespace DriftCore.Services.VirtualWheel;
 
 /// <summary>
 /// Gerencia um volante virtual via vJoy (DirectInput).
