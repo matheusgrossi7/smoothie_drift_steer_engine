@@ -48,7 +48,7 @@ public readonly struct VirtualWheelState
         // D-Pad -> POV contínuo (graus * 100)
         int pov1 = PovFromDpad(gamepad.Buttons);
 
-        var buttons = WheelButtonMapper.FromGamepadButtons(gamepad.Buttons, useLbAsClutch);
+        var buttons = WheelButtonMapper.FromGamepad(gamepad, useLbAsClutch);
         return new VirtualWheelState(steeringX, brakeY, throttleZ, clutchRx, pov1, buttons);
     }
 
@@ -108,26 +108,52 @@ public enum WheelButtons : uint
     Button11 = 1u << 10,
     Button12 = 1u << 11,
 
+    Button13 = 1u << 12,
+    Button14 = 1u << 13,
+    Button15 = 1u << 14,
+    Button16 = 1u << 15,
+
     // Reservado: até 32 botões aqui, vJoy suporta bem mais.
 }
 
 internal static class WheelButtonMapper
 {
-    public static WheelButtons FromGamepadButtons(GamepadButtons buttons, bool useLbAsClutch)
+    private const byte TriggerPressedThreshold = 30;
+
+    public static WheelButtons FromGamepad(Gamepad gamepad, bool useLbAsClutch)
     {
         WheelButtons result = WheelButtons.None;
 
-        // Mapeamento simples: A/B/X/Y/LB/RB/Back/Start/etc -> botões 1..12
+        var buttons = gamepad.Buttons;
+
+        // 1:1 (controle -> vJoy buttons)
+        // ABXY
         if (buttons.HasFlag(GamepadButtons.A)) result |= WheelButtons.Button1;
         if (buttons.HasFlag(GamepadButtons.B)) result |= WheelButtons.Button2;
         if (buttons.HasFlag(GamepadButtons.X)) result |= WheelButtons.Button3;
         if (buttons.HasFlag(GamepadButtons.Y)) result |= WheelButtons.Button4;
+
+        // Shoulder
         if (buttons.HasFlag(GamepadButtons.LeftShoulder)) result |= WheelButtons.Button5;
         if (buttons.HasFlag(GamepadButtons.RightShoulder)) result |= WheelButtons.Button6;
+
+        // Menu/View
         if (buttons.HasFlag(GamepadButtons.Back)) result |= WheelButtons.Button7;
         if (buttons.HasFlag(GamepadButtons.Start)) result |= WheelButtons.Button8;
+
+        // Stick press (L3/R3)
         if (buttons.HasFlag(GamepadButtons.LeftThumb)) result |= WheelButtons.Button9;
         if (buttons.HasFlag(GamepadButtons.RightThumb)) result |= WheelButtons.Button10;
+
+        // D-Pad (também é enviado como POV em VirtualWheelState)
+        if (buttons.HasFlag(GamepadButtons.DPadUp)) result |= WheelButtons.Button11;
+        if (buttons.HasFlag(GamepadButtons.DPadRight)) result |= WheelButtons.Button12;
+        if (buttons.HasFlag(GamepadButtons.DPadDown)) result |= WheelButtons.Button13;
+        if (buttons.HasFlag(GamepadButtons.DPadLeft)) result |= WheelButtons.Button14;
+
+        // Triggers como botões (além de eixos Y/Z): útil para binds digitais no jogo
+        if (gamepad.LeftTrigger >= TriggerPressedThreshold) result |= WheelButtons.Button15;
+        if (gamepad.RightTrigger >= TriggerPressedThreshold) result |= WheelButtons.Button16;
 
         return result;
     }
