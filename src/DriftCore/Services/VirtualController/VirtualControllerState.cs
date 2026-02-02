@@ -42,8 +42,10 @@ public readonly struct VirtualWheelState
         var brakeY = AxisFromUnsignedByte(gamepad.LeftTrigger);
         var throttleZ = AxisFromUnsignedByte(gamepad.RightTrigger);
 
-        // Embreagem (clutch): por padrão LB (digital) -> eixo Rx (0 ou 32768)
-        var clutchRx = useLbAsClutch && gamepad.Buttons.HasFlag(GamepadButtons.LeftShoulder) ? 32768 : 0;
+        // Embreagem (clutch): analógico direito (eixo Y), somente metade de cima.
+        // - Centro/baixo: 0
+        // - Acima de 50% para cima: escala 0..32768
+        var clutchRx = useLbAsClutch ? AxisFromRightStickUpHalf(gamepad.RightThumbY) : 0;
 
         // D-Pad -> POV contínuo (graus * 100)
         int pov1 = PovFromDpad(gamepad.Buttons);
@@ -67,6 +69,21 @@ public readonly struct VirtualWheelState
     {
         // [0..255] => [0..32768]
         return ClampAxis((int)Math.Round(value * (32768.0 / 255.0)));
+    }
+
+    private static int AxisFromRightStickUpHalf(short rightThumbY)
+    {
+        // rightThumbY: [-32768..32767] (up is positive)
+        // Normalize to [0..1] for the "up" direction only.
+        double up = rightThumbY / 32767.0;
+        up = Math.Clamp(up, 0.0, 1.0);
+
+        // Only the upper half of the travel is used.
+        const double threshold = 0.5;
+        if (up <= threshold) return 0;
+
+        double scaled = (up - threshold) / (1.0 - threshold); // 0..1
+        return ClampAxis((int)Math.Round(scaled * 32768.0));
     }
 
     private static int PovFromDpad(GamepadButtons buttons)

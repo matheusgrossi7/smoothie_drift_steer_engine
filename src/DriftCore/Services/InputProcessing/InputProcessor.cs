@@ -61,7 +61,7 @@ public sealed class InputProcessor
         var dtSeconds = deltaTicks / (double)Stopwatch.Frequency;
 
         // Variável local (0..1) para ajustar a velocidade global de giro.
-        var speedAdjust = 0.1;
+        var speedAdjust = 0.5;
         speedAdjust = Math.Clamp(speedAdjust, 0.0, 1.0);
 
         // Taxa máxima de mudança do output (normalizado) por segundo, com input=±1.

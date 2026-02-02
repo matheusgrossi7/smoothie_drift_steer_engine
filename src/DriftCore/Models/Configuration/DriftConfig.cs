@@ -18,7 +18,7 @@ public sealed class DriftConfig
     public int VJoyDeviceId { get; set; } = 1;
 
     /// <summary>
-    /// For FH5 manual w/ clutch: map the Xbox controller LB (LeftShoulder) to the wheel clutch axis (Rx).
+    /// For FH5 manual w/ clutch: enable clutch axis (Rx) sourced from the right stick Y (upper half).
     /// </summary>
     public bool UseLbAsClutch { get; set; } = true;
 
