@@ -1,12 +1,10 @@
-﻿## 🎯 Project Objective
+﻿## 🎯 Project Objective And Motivation
 
 This project aims to create a **steering simulation layer** that allows a standard game controller to behave like a **continuous steering system**, rather than a raw digital input, in Forza games (Forza Horizon and Forza Motorsport series).
 
 Instead of mapping thumbstick position directly to steering angle, the engine maintains an internal **steering state**, producing an output closer to a real steering rack.
 
 The core goal is **not to make drifting easier**, but to make it **more natural, predictable, and visually smooth**, preserving driver skill while eliminating the inherent limitations of digital thumbstick steering (some games like BeamNG.drive already implement similar systems natively).
-
-## 🚗 Motivation
 
 In drifting, **style matters**. Smooth steering arcs and controlled counter-steer are essential for both realism and visual appeal. Traditional game controllers, with their binary thumbstick inputs, often lead to abrupt and unnatural steering behavior, detracting from the overall experience.
 
@@ -117,3 +115,4 @@ Add the paths using the `+` button:
 3.  Open **Forza EmuWheel.exe**:
 
     * Click **Start**.
+
