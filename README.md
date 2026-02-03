@@ -1,6 +1,6 @@
 ﻿## 🎯 Project Objective
 
-This project aims to create a **steering simulation layer** that allows a standard game controller to behave like a **continuous steering system**, rather than a raw digital input.
+This project aims to create a **steering simulation layer** that allows a standard game controller to behave like a **continuous steering system**, rather than a raw digital input, in Forza games (Forza Horizon and Forza Motorsport series).
 
 Instead of mapping thumbstick position directly to steering angle, the engine maintains an internal **steering state**, producing an output closer to a real steering rack.
 
