@@ -26,7 +26,7 @@ Only controller -> engine -> vJoy communication is currently functional (it alre
         1.  🎮 The Physical Controller (Xbox Wireless).
         2.  🕹️ The Emulated Controller.
 
-    - **Consequence:** A "Double Input" conflict occurs. The game receives raw input from the physical controller (unprocessed) at the same time it receives processed input from the *Drift Engine* (via vJoy), resulting in erratic behavior and nullifying the engine's simulation.
+    - **Consequence:** A "Double Input" conflict occurs. The game receives raw input from the physical controller (unprocessed) at the same time it receives processed input from the *Drift Engine*, resulting in erratic behavior and nullifying the engine's simulation.
 
 ## Why not use ViGEmBus? (and use vJoy instead)
 
