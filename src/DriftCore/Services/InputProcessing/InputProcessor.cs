@@ -9,16 +9,27 @@ namespace DriftCore.Services.InputProcessing;
 /// </summary>
 public sealed class InputProcessor
 {
+    // Deadzone único aplicado ao input (mantido centralizado aqui).
+    private const double Deadzone = 0.25;
+    private const double SpeedAdjust = 0.5;
+    private const double MaxUnitsPerSecond = 1.5;
+
     private bool _smoothingEnabled;
     private int _smoothingValue;
 
     private double _steeringPosition;
+    private double _smoothedInput;
     private long _lastTimestamp;
 
     public void UpdateSmoothing(bool enabled, int value)
     {
         Volatile.Write(ref _smoothingEnabled, enabled);
         Volatile.Write(ref _smoothingValue, Math.Clamp(value, 0, 100));
+
+        if (!enabled)
+        {
+            _smoothedInput = 0;
+        }
     }
 
     public double ProcessSteering(double input)
@@ -29,17 +40,23 @@ public sealed class InputProcessor
         input = Math.Clamp(input, -1.0, 1.0);
 
         // Deadzone para evitar drift perto do zero.
-        const double deadzone = 0.25;
         var absInput = Math.Abs(input);
-        if (absInput <= deadzone)
+        if (absInput <= Deadzone)
         {
             input = 0.0;
         }
         else
         {
             // Remapeia para manter resposta linear fora da deadzone.
-            var scaled = (absInput - deadzone) / (1.0 - deadzone);
+            var scaled = (absInput - Deadzone) / (1.0 - Deadzone);
             input = Math.Sign(input) * Math.Clamp(scaled, 0.0, 1.0);
+        }
+
+        // Suavização opcional do input (passthrough por enquanto).
+        if (Volatile.Read(ref _smoothingEnabled))
+        {
+            _ = Volatile.Read(ref _smoothingValue);
+            // Intencionalmente sem aplicar smoothing no input neste momento.
         }
 
         var now = Stopwatch.GetTimestamp();
@@ -60,19 +77,23 @@ public sealed class InputProcessor
 
         var dtSeconds = deltaTicks / (double)Stopwatch.Frequency;
 
-        // Variável local (0..1) para ajustar a velocidade global de giro.
-        var speedAdjust = 0.1;
-        speedAdjust = Math.Clamp(speedAdjust, 0.0, 1.0);
+        // Ajuste global de velocidade do giro (0..1).
+        var speedAdjust = Math.Clamp(SpeedAdjust, 0.0, 1.0);
 
-        // Taxa máxima de mudança do output (normalizado) por segundo, com input=±1.
-        const double maxUnitsPerSecond = 1.5;
-
-        var newPosition = _steeringPosition + (input * maxUnitsPerSecond * speedAdjust * dtSeconds);
+        var newPosition = _steeringPosition + (input * MaxUnitsPerSecond * speedAdjust * dtSeconds);
         _steeringPosition = Math.Clamp(newPosition, -1.0, 1.0);
 
         // Output linear: posição normalizada atual do volante.
         return _steeringPosition;
     }
 
-
+    /// <summary>
+    /// Reseta o estado do processador (útil em reconexões).
+    /// </summary>
+    public void Reset()
+    {
+        _steeringPosition = 0;
+        _smoothedInput = 0;
+        Volatile.Write(ref _lastTimestamp, 0);
+    }
 }

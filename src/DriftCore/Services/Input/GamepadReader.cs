@@ -7,7 +7,6 @@ namespace DriftCore.Services.Input;
 /// </summary>
 public static class GamepadReader
 {
-    private const double Deadzone = 0.15;
     private const int MaxGamepadIndex = 3;
 
     public static GamepadReadResult Read(int index)
@@ -15,11 +14,12 @@ public static class GamepadReader
         if (!IsValidIndex(index)) return GamepadReadResult.Disconnected;
         if (!XInput.GetState((uint)index, out var state)) return GamepadReadResult.Disconnected;
 
+        // Deadzone é aplicada no InputProcessor para manter a lógica centralizada.
         double steering = NormalizeAxis(state.Gamepad.LeftThumbX);
 
         return new GamepadReadResult(
             isConnected: true,
-            steering: ApplyDeadzone(steering),
+            steering: steering,
             gamepad: state.Gamepad
         );
     }
@@ -36,8 +36,12 @@ public static class GamepadReader
     }
 
     private static bool IsValidIndex(int index) => index >= 0 && index <= MaxGamepadIndex;
-    private static double NormalizeAxis(short value) => value / 32768.0;
-    private static double ApplyDeadzone(double value) => Math.Abs(value) < Deadzone ? 0 : value;
+    private static double NormalizeAxis(short value)
+    {
+        // XInput usa [-32768..32767]. Normaliza para [-1..1] sem assimetria.
+        double normalized = value < 0 ? value / 32768.0 : value / 32767.0;
+        return Math.Clamp(normalized, -1.0, 1.0);
+    }
 }
 
 /// <summary>

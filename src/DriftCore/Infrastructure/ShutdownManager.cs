@@ -1,5 +1,3 @@
-using DriftCore.Configuration;
-
 namespace DriftCore.Infrastructure;
 
 /// <summary>
@@ -7,14 +5,16 @@ namespace DriftCore.Infrastructure;
 /// </summary>
 public sealed class ShutdownManager
 {
-    private readonly IHostApplicationLifetime _lifetime;
-    private volatile bool _isShuttingDown;
+    private readonly Action _stopApplication;
+    private readonly Func<TimeSpan> _shutdownTimeout;
+    private int _isShuttingDown;
 
-    public bool IsShuttingDown => _isShuttingDown;
+    public bool IsShuttingDown => Volatile.Read(ref _isShuttingDown) != 0;
 
-    public ShutdownManager(IHostApplicationLifetime lifetime)
+    public ShutdownManager(Action stopApplication, Func<TimeSpan> shutdownTimeout)
     {
-        _lifetime = lifetime;
+        _stopApplication = stopApplication;
+        _shutdownTimeout = shutdownTimeout;
     }
 
     /// <summary>
@@ -22,13 +22,11 @@ public sealed class ShutdownManager
     /// </summary>
     public void RequestShutdown(string reason)
     {
-        if (_isShuttingDown) return;
-        _isShuttingDown = true;
+        if (Interlocked.Exchange(ref _isShuttingDown, 1) != 0) return;
 
         Console.WriteLine($"[Shutdown] {reason}");
 
-        if (!_lifetime.ApplicationStopping.IsCancellationRequested)
-            _lifetime.StopApplication();
+        _stopApplication();
     }
 
     /// <summary>
@@ -36,21 +34,19 @@ public sealed class ShutdownManager
     /// </summary>
     public void RequestForcedShutdown(string reason)
     {
-        if (_isShuttingDown) return;
-        _isShuttingDown = true;
+        if (Interlocked.Exchange(ref _isShuttingDown, 1) != 0) return;
 
         Console.WriteLine($"[Shutdown] {reason}");
         StartForceExitTimer();
 
-        if (!_lifetime.ApplicationStopping.IsCancellationRequested)
-            _lifetime.StopApplication();
+        _stopApplication();
     }
 
     private void StartForceExitTimer()
     {
         _ = Task.Run(async () =>
         {
-            await Task.Delay(EngineSettings.ShutdownTimeout);
+            await Task.Delay(_shutdownTimeout());
             Console.WriteLine("[Shutdown] Timeout. Forçando encerramento...");
             Environment.Exit(0);
         });
