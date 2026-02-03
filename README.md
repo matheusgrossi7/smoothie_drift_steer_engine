@@ -52,7 +52,7 @@ Next steps:
 This document details the step-by-step process to configure the project, ensuring that **vJoy**, **HidHide**(maybe), and not-**EmuWheel** work with the **DRIFT Engine**.
 
 ## 📋 Prerequisites
-* **.NET 8.0 Runtime** (to run the C# Engine)
+* **.NET 8.0 SDK**
 * **Administrator Access** (for driver installation)
 
 ## 1. Engine Configuration (DRIFT)
