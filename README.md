@@ -1,4 +1,20 @@
-﻿## ⚠️ Current Status: NON-FUNCTIONAL (Work In Progress)
+﻿## 🎯 Project Objective
+
+This project aims to create a **steering simulation layer** that allows a standard game controller to behave like a **continuous steering system**, rather than a raw digital input.
+
+Instead of mapping thumbstick position directly to steering angle, the engine maintains an internal **steering state**, producing an output closer to a real steering rack.
+
+The core goal is **not to make drifting easier**, but to make it **more natural, predictable, and visually smooth**, preserving driver skill while eliminating the inherent limitations of digital thumbstick steering (some games like BeamNG.drive already implement similar systems natively).
+
+## 🚗 Motivation
+
+In drifting, **style matters**. Smooth steering arcs and controlled counter-steer are essential for both realism and visual appeal. Traditional game controllers, with their binary thumbstick inputs, often lead to abrupt and unnatural steering behavior, detracting from the overall experience.
+
+This project focuses on reinterpreting controller input as a simulated steering system.
+
+---
+
+## ⚠️ Current Status: NON-FUNCTIONAL (Work In Progress)
 
 Only controller -> engine -> vJoy communication is currently functional (it already process the input, holding the steering angle properly in vJoy). The engine's output to Forza via EmuWheel is not working due to the following issues:
 
