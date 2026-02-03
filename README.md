@@ -116,3 +116,22 @@ Add the paths using the `+` button:
 
     * Click **Start**.
 
+---
+
+## ⚠️ Disclaimer
+
+This project is **not affiliated with, endorsed by, or associated with** any development team, publisher, or company related to the Forza franchise, including but not limited to Microsoft, Xbox Game Studios, or Turn 10 Studios.
+
+This repository does **not modify the game, Steam, or any game files** in any way. It operates entirely as an **external input-processing layer**, without DLL injection, memory manipulation, or runtime hooks.
+
+Because of this, the use of this project is **not expected to result in bans or penalties**. At the time of writing, it has been used without any issues.  
+However, **no guarantees are made**. The author assumes **no responsibility** for any account restrictions, bans, or other consequences that may occur from its use.
+
+Use this project **at your own risk**.
+
+---
+
+## 📄 License
+
+This project is licensed under the **MIT License**.  
+See the [LICENSE](LICENSE) file for more details.
