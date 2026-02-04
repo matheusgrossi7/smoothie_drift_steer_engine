@@ -1,4 +1,5 @@
 using System.Runtime.InteropServices;
+using System.Diagnostics;
 using System.Threading;
 
 namespace DriftCore.Services.ForceFeedback;
@@ -15,8 +16,28 @@ public sealed class ForceFeedbackService : IDisposable
 
     private GCHandle? _selfHandle;
     private double _latestNormalizedForce;
+    private long _lastForceUpdateTicks;
 
-    public double LatestNormalizedForce => Volatile.Read(ref _latestNormalizedForce);
+    private long _lastSpikeLogTicks;
+
+    public double LatestNormalizedForce
+    {
+        get
+        {
+            var last = Volatile.Read(ref _lastForceUpdateTicks);
+            if (last == 0)
+                return 0d;
+
+            // If we stop receiving valid instantaneous force updates, don't keep applying
+            // the last value forever.
+            const double timeoutSeconds = 0.10;
+            var ageTicks = Stopwatch.GetTimestamp() - last;
+            if (ageTicks > (long)(Stopwatch.Frequency * timeoutSeconds))
+                return 0d;
+
+            return Volatile.Read(ref _latestNormalizedForce);
+        }
+    }
 
     public void EnsureStarted(uint deviceId)
     {
@@ -100,8 +121,11 @@ public sealed class ForceFeedbackService : IDisposable
             if (handle.Target is not ForceFeedbackService service)
                 return;
 
-            if (VJoyFfbInterop.TryGetSignedNormalizedForce(ffbDataPtr, out var normalized, out _))
+            if (VJoyFfbInterop.TryGetSignedNormalizedForce(ffbDataPtr, out var normalized, out var kind))
+            {
+                service.MaybeLogSpike(ffbDataPtr, normalized, kind);
                 service.UpdateLatestForce(normalized);
+            }
         }
         catch (Exception ex)
         {
@@ -110,8 +134,32 @@ public sealed class ForceFeedbackService : IDisposable
         }
     }
 
+    private void MaybeLogSpike(IntPtr ffbDataPtr, double normalized, string kind)
+    {
+        if (Math.Abs(normalized) < 0.999)
+            return;
+
+        // Throttle to avoid flooding (native callback can be high frequency).
+        var now = Stopwatch.GetTimestamp();
+        var last = Volatile.Read(ref _lastSpikeLogTicks);
+        if (now - last < Stopwatch.Frequency / 2)
+            return;
+        Volatile.Write(ref _lastSpikeLogTicks, now);
+
+        byte reportId = 0;
+        int len = 0;
+        if (VJoyFfbInterop.TryCopyDataBytes(ffbDataPtr, out _, out var data) && data.Length > 0)
+        {
+            reportId = data[0];
+            len = data.Length;
+        }
+
+        Console.WriteLine($"[FFB] Spike |norm|={Math.Abs(normalized):0.000} kind={kind} reportId=0x{reportId:X2} len={len}");
+    }
+
     private void UpdateLatestForce(double normalized)
     {
+        Volatile.Write(ref _lastForceUpdateTicks, Stopwatch.GetTimestamp());
         Volatile.Write(ref _latestNormalizedForce, normalized);
     }
 

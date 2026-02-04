@@ -23,7 +23,12 @@ internal static class FfbReportParser
         if (!TryReadPayload(ffbDataPtr, out var payload))
             return false;
 
-        return TryGetNormalizedForce(payload, out normalized);
+        return TryGetNormalizedForce(payload.AsSpan(), out normalized);
+    }
+
+    public static bool TryGetNormalizedForce(ReadOnlySpan<byte> payload, out double normalized)
+    {
+        return TryGetNormalizedForceFromPayload(payload, out normalized);
     }
 
     public static bool TryReadPayload(IntPtr ffbDataPtr, out byte[] payload)
@@ -249,7 +254,7 @@ internal static class FfbReportParser
         return sb.ToString();
     }
 
-    private static bool TryGetNormalizedForce(ReadOnlySpan<byte> p, out double normalized)
+    private static bool TryGetNormalizedForceFromPayload(ReadOnlySpan<byte> p, out double normalized)
     {
         normalized = 0d;
 

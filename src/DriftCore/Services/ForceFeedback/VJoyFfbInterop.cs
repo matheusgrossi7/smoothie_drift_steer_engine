@@ -188,41 +188,51 @@ internal static class VJoyFfbInterop
 
         try
         {
-            // Prefer specific effect helpers. They already decode the packet->data.
+            var type = default(FFBPType);
+            if (Ffb_h_Type(ffbDataPtr, ref type) != 0)
+                return false;
+
+            // IMPORTANT: Only decode the effect that matches the packet type.
+            // Some vJoy builds can return success for helper calls even when the packet type
+            // doesn't match, yielding garbage magnitudes (often saturating to 1.0).
             var dirSign = TryGetDirectionXSign(ffbDataPtr, out var directionKind);
 
-            var constantEffect = default(FFB_EFF_CONSTANT);
-            if (Ffb_h_Eff_Constant(ffbDataPtr, ref constantEffect) == 0)
+            switch (type)
             {
-                normalized = NormalizeMagnitudeWithSign(constantEffect.Magnitude, dirSign);
-                kind = directionKind is null ? "Constant" : $"Constant/{directionKind}";
-                return true;
+                case FFBPType.PT_CONSTREP:
+                {
+                    var constantEffect = default(FFB_EFF_CONSTANT);
+                    if (Ffb_h_Eff_Constant(ffbDataPtr, ref constantEffect) != 0)
+                        return false;
+
+                    normalized = NormalizeMagnitudeWithSign(constantEffect.Magnitude, dirSign);
+                    kind = directionKind is null ? "Constant" : $"Constant/{directionKind}";
+                    return true;
+                }
+
+                case FFBPType.PT_RAMPREP:
+                {
+                    var ramp = default(FFB_EFF_RAMP);
+                    if (Ffb_h_Eff_Ramp(ffbDataPtr, ref ramp) != 0)
+                        return false;
+
+                    var value = ramp.End != 0 ? ramp.End : ramp.Start;
+                    normalized = NormalizeMagnitudeWithSign(value, dirSign);
+                    kind = directionKind is null ? "Ramp" : $"Ramp/{directionKind}";
+                    return true;
+                }
+                default:
+                    kind = type.ToString();
+                    break;
             }
 
-            var ramp = default(FFB_EFF_RAMP);
-            if (Ffb_h_Eff_Ramp(ffbDataPtr, ref ramp) == 0)
-            {
-                var value = ramp.End != 0 ? ramp.End : ramp.Start;
-                normalized = NormalizeMagnitudeWithSign(value, dirSign);
-                kind = directionKind is null ? "Ramp" : $"Ramp/{directionKind}";
-                return true;
-            }
-
-            var periodic = default(FFB_EFF_PERIOD);
-            if (Ffb_h_Eff_Period(ffbDataPtr, ref periodic) == 0)
-            {
-                // Best-effort: periodic magnitude is unsigned. Use direction if present.
-                var mag = Math.Clamp(periodic.Magnitude / 10000d, 0d, 1d);
-                var sign = dirSign ?? (periodic.Offset < 0 ? -1d : 1d);
-                normalized = Math.Clamp(mag * sign, -1d, 1d);
-                kind = directionKind is null ? "Periodic" : $"Periodic/{directionKind}";
-                return true;
-            }
-
-            var type = default(FFBPType);
-            if (Ffb_h_Type(ffbDataPtr, ref type) == 0)
-                kind = type.ToString();
-
+            // NOTE:
+            // - PT_PRIDREP (SetPeriodic) and PT_CONDREP (SetCondition: Spring/Damper/Friction)
+            //   are effect *parameter* updates, not instantaneous force samples.
+            // - Treating their magnitude/coefficients as a direct force causes hard bias
+            //   spikes (e.g. +1.0) and "ghost drift".
+            // If we want periodic/condition effects later, we need to *synthesize* them
+            // against time/position/velocity and effect enable state.
             return false;
         }
         catch

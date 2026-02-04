@@ -15,6 +15,9 @@ public sealed class InputProcessor
     private double _feedbackTorqueGain = 15.0;
     private double _maxDtSeconds = 0.05;
 
+    private double _friction = 1.5;
+    private double _centeringSpringStrength = 1.5;
+
     private bool _softLockEnabled = true;
     private double _softLockStart = 0.92;
     private double _softLockStiffness = 35.0;
@@ -145,9 +148,42 @@ public sealed class InputProcessor
 
         var softLockTorque = ComputeSoftLockTorque();
 
+        // Passive centering (caster-like alignment): weak spring pulling towards center.
+        var centeringTorque = -_steeringPosition * _centeringSpringStrength;
+
+        var totalTorque = _driverTorque + feedbackTorque + softLockTorque + centeringTorque;
+
         var inertia = Math.Max(1e-6, _inertia);
         var damping = Math.Max(0.0, _damping);
-        var acceleration = (_driverTorque + feedbackTorque + softLockTorque - (_velocity * damping)) / inertia;
+
+        // Damping (air/fluid resistance) - keep existing behavior.
+        var internalTorque = totalTorque - (_velocity * damping);
+
+        // Coulomb friction (stiction + kinetic friction) to prevent ghost drift.
+        var friction = Math.Max(0.0, _friction);
+        const double stictionVelocityThreshold = 0.01;
+
+        if (friction > 0.0)
+        {
+            if (Math.Abs(_velocity) < stictionVelocityThreshold)
+            {
+                if (Math.Abs(internalTorque) <= friction)
+                {
+                    internalTorque = 0.0;
+                    _velocity = 0.0;
+                }
+                else
+                {
+                    internalTorque -= Math.Sign(internalTorque) * friction;
+                }
+            }
+            else
+            {
+                internalTorque -= Math.Sign(_velocity) * friction;
+            }
+        }
+
+        var acceleration = internalTorque / inertia;
 
         _velocity += acceleration * dtSeconds;
         _steeringPosition += _velocity * dtSeconds;
