@@ -33,6 +33,7 @@ public sealed class XboxWirelessUsbDriver : IDisposable
     private USBDevice? _device;
     private USBInterface? _iface;
     private USBPipe? _inPipe;
+    private USBPipe? _outPipe;
     private int _readSize;
 
     private Thread? _thread;
@@ -40,6 +41,10 @@ public sealed class XboxWirelessUsbDriver : IDisposable
 
     private volatile bool _isRunning;
     private volatile bool _isConnected;
+
+    private readonly int _ledPlayerIndex;
+    private bool _ledSent;
+    private long _ledLastAttemptTicks;
 
     private readonly bool _dumpEnabled;
     private int _dumpRemaining;
@@ -196,6 +201,14 @@ public sealed class XboxWirelessUsbDriver : IDisposable
         _deviceInterfaceGuid = NormalizeGuid(deviceInterfaceGuid);
         _readTimeoutMs = Math.Max(0, readTimeoutMs);
         _buffer = new byte[Math.Max(ExpectedInputReportLength, readBufferSize)];
+
+        // LED: When using WinUSB instead of the stock XUSB/XInput stack, the controller ring
+        // may keep blinking. Default to forcing Player 1 (solid) unless explicitly disabled.
+        // Set DRIFT_USB_LED_PLAYER=0 to disable, or 1..4 to choose the player index.
+        var ledEnv = ParseOptionalIntEnv("DRIFT_USB_LED_PLAYER");
+        _ledPlayerIndex = ledEnv == 0 ? 0 : Math.Clamp(ledEnv > 0 ? ledEnv : 1, 1, 4);
+        _ledSent = false;
+        _ledLastAttemptTicks = 0;
 
         _dumpEnabled = string.Equals(Environment.GetEnvironmentVariable("DRIFT_USB_DUMP"), "1", StringComparison.OrdinalIgnoreCase);
         var dumpCount = ParseOptionalIntEnv("DRIFT_USB_DUMP_COUNT");
@@ -371,6 +384,10 @@ public sealed class XboxWirelessUsbDriver : IDisposable
                 continue;
             }
 
+            // Best-effort: once we know a controller is actually sending input,
+            // try forcing the ring LED so it doesn't keep blinking.
+            TryEnsurePlayerLed();
+
             Volatile.Write(ref _statPayloadOffset, usedOffset);
 
             _lastGamepad = gamepad;
@@ -450,6 +467,8 @@ public sealed class XboxWirelessUsbDriver : IDisposable
                 return;
             }
 
+            try { _outPipe = _iface.OutPipe; } catch { _outPipe = null; }
+
             try
             {
                 _readSize = Math.Clamp(_inPipe.MaximumPacketSize, 1, _buffer.Length);
@@ -481,6 +500,9 @@ public sealed class XboxWirelessUsbDriver : IDisposable
             // Consider connected as soon as the WinUSB pipe is open.
             // Input freshness is independent (steering/gamepad only update on valid input packets).
             _isConnected = true;
+
+            // Try early, but we also retry after first valid input.
+            TryEnsurePlayerLed(force: true);
         }
         catch
         {
@@ -588,6 +610,7 @@ public sealed class XboxWirelessUsbDriver : IDisposable
     private void CloseDevice()
     {
         try { _inPipe = null; } catch { /* ignore */ }
+        try { _outPipe = null; } catch { /* ignore */ }
         try { _iface = null; } catch { /* ignore */ }
 
         try
@@ -605,6 +628,9 @@ public sealed class XboxWirelessUsbDriver : IDisposable
         _lastGamepad = default;
         _lastSteering = 0;
         Volatile.Write(ref _lastPacketTicks, 0);
+
+        _ledSent = false;
+        _ledLastAttemptTicks = 0;
 
         _hasPending = false;
         _hasStable = false;
@@ -914,6 +940,49 @@ public sealed class XboxWirelessUsbDriver : IDisposable
             sum += _byteMotion[offset + i];
 
         return sum;
+    }
+
+    private void TryEnsurePlayerLed(bool force = false)
+    {
+        if (_ledPlayerIndex <= 0)
+            return;
+
+        if (_ledSent && !force)
+            return;
+
+        var outPipe = _outPipe;
+        if (outPipe == null)
+            return;
+
+        var now = DateTime.UtcNow.Ticks;
+        if (!force)
+        {
+            var last = Interlocked.Read(ref _ledLastAttemptTicks);
+            if (last != 0 && (now - last) < TimeSpan.FromSeconds(2).Ticks)
+                return;
+        }
+
+        Interlocked.Exchange(ref _ledLastAttemptTicks, now);
+
+        try
+        {
+            // Xbox 360 Wireless Receiver (Linux xpad driver XTYPE_XBOX360W): 12 bytes
+            // 00 00 08 (0x40 + command) 00 ...
+            // command 6..9 = solid player 1..4.
+            var command = (byte)(5 + _ledPlayerIndex); // 6..9
+            var packet = new byte[12];
+            packet[0] = 0x00;
+            packet[1] = 0x00;
+            packet[2] = 0x08;
+            packet[3] = (byte)(0x40 + command);
+
+            outPipe.Write(packet, 0, packet.Length);
+            _ledSent = true;
+        }
+        catch
+        {
+            // Best-effort only.
+        }
     }
 
     private static int ParseOptionalIntEnv(string name)
