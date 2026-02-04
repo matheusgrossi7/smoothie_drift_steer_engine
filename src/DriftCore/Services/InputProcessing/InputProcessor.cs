@@ -15,6 +15,13 @@ public sealed class InputProcessor
     private double _feedbackTorqueGain = 15.0;
     private double _maxDtSeconds = 0.05;
 
+    private bool _softLockEnabled = true;
+    private double _softLockStart = 0.92;
+    private double _softLockStiffness = 35.0;
+    private double _softLockDamping = 6.0;
+    private double _softLockMaxOvershoot = 0.03;
+    private double _softLockOutputLimit = 0.999;
+
     private bool _smoothingEnabled;
     private int _smoothingValue;
 
@@ -39,6 +46,13 @@ public sealed class InputProcessor
         _driverTorqueGain = options.DriverTorqueGain;
         _feedbackTorqueGain = options.FeedbackTorqueGain;
         _maxDtSeconds = options.MaxDtSeconds;
+
+        _softLockEnabled = options.SoftLock.Enabled;
+        _softLockStart = options.SoftLock.Start;
+        _softLockStiffness = options.SoftLock.Stiffness;
+        _softLockDamping = options.SoftLock.Damping;
+        _softLockMaxOvershoot = options.SoftLock.MaxOvershoot;
+        _softLockOutputLimit = options.SoftLock.OutputLimit;
     }
 
     /// <summary>
@@ -62,9 +76,9 @@ public sealed class InputProcessor
 
         UpdateDriverTorque(input, dtSeconds);
         IntegrateSteering(dtSeconds);
-        ApplyBumpStops();
+        ApplySoftLockSafetyClamp();
 
-        return _steeringPosition;
+        return ApplyOutputLimit(_steeringPosition);
     }
 
     private double ApplyDeadzoneAndRemap(double input)
@@ -129,28 +143,75 @@ public sealed class InputProcessor
     {
         var feedbackTorque = Volatile.Read(ref _feedbackForce) * _feedbackTorqueGain;
 
+        var softLockTorque = ComputeSoftLockTorque();
+
         var inertia = Math.Max(1e-6, _inertia);
         var damping = Math.Max(0.0, _damping);
-        var acceleration = (_driverTorque + feedbackTorque - (_velocity * damping)) / inertia;
+        var acceleration = (_driverTorque + feedbackTorque + softLockTorque - (_velocity * damping)) / inertia;
 
         _velocity += acceleration * dtSeconds;
         _steeringPosition += _velocity * dtSeconds;
     }
 
-    private void ApplyBumpStops()
+    private double ComputeSoftLockTorque()
     {
-        if (_steeringPosition > 1.0)
+        if (!_softLockEnabled)
+            return 0.0;
+
+        var start = Math.Clamp(_softLockStart, 0.0, 1.0);
+        var absPos = Math.Abs(_steeringPosition);
+        if (absPos <= start)
+            return 0.0;
+
+        var range = Math.Max(1e-6, 1.0 - start);
+        var penetration = (absPos - start) / range; // 0..(>1 if overshoot)
+
+        var direction = Math.Sign(_steeringPosition);
+        if (direction == 0)
+            return 0.0;
+
+        // Spring: pushes back towards center.
+        var spring = -direction * (_softLockStiffness * penetration);
+
+        // Damping: only while moving further into the stop.
+        var outwardVelocity = direction * _velocity; // >0 when moving outward
+        var damper = outwardVelocity > 0.0 ? (-direction * (_softLockDamping * outwardVelocity)) : 0.0;
+
+        return spring + damper;
+    }
+
+    private void ApplySoftLockSafetyClamp()
+    {
+        if (!_softLockEnabled)
         {
-            _steeringPosition = 1.0;
+            // Keep a safety clamp even when soft lock is disabled.
+            _steeringPosition = Math.Clamp(_steeringPosition, -1.0, 1.0);
+            if (_steeringPosition >= 1.0 && _velocity > 0.0) _velocity = 0.0;
+            if (_steeringPosition <= -1.0 && _velocity < 0.0) _velocity = 0.0;
+            return;
+        }
+
+        var maxOvershoot = Math.Max(0.0, _softLockMaxOvershoot);
+        var maxPos = 1.0 + maxOvershoot;
+
+        if (_steeringPosition > maxPos)
+        {
+            _steeringPosition = maxPos;
             if (_velocity > 0.0) _velocity = 0.0;
             return;
         }
 
-        if (_steeringPosition < -1.0)
+        if (_steeringPosition < -maxPos)
         {
-            _steeringPosition = -1.0;
+            _steeringPosition = -maxPos;
             if (_velocity < 0.0) _velocity = 0.0;
         }
+    }
+
+    private double ApplyOutputLimit(double position)
+    {
+        var limit = Math.Clamp(_softLockOutputLimit, 0.1, 1.0);
+        return Math.Clamp(position, -limit, limit);
     }
 
     private static double Lerp(double a, double b, double t) => a + ((b - a) * Math.Clamp(t, 0.0, 1.0));

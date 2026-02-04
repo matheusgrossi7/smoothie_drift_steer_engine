@@ -8,6 +8,44 @@ public sealed class EngineOptions
 {
     public sealed class SteeringPhysicsOptions
     {
+        public sealed class SoftLockOptions
+        {
+            /// <summary>
+            /// Enables a spring-like end stop near the steering limits.
+            /// This avoids hitting the hard limit (vJoy clipping) by applying a strong counter torque.
+            /// </summary>
+            public bool Enabled { get; set; } = true;
+
+            /// <summary>
+            /// Where the soft lock starts, in normalized steering position (0..1).
+            /// Example: 0.92 means the last 8% of travel is the soft lock zone.
+            /// </summary>
+            public double Start { get; set; } = 0.92;
+
+            /// <summary>
+            /// Spring stiffness (torque units) at full penetration (|pos| == 1.0).
+            /// Higher values push back harder.
+            /// </summary>
+            public double Stiffness { get; set; } = 35.0;
+
+            /// <summary>
+            /// Extra damping applied only while moving further into the stop (outward velocity).
+            /// </summary>
+            public double Damping { get; set; } = 6.0;
+
+            /// <summary>
+            /// Safety clamp for the internal integrator to prevent runaway on extreme inputs.
+            /// Allows some overshoot beyond 1.0 while still remaining stable.
+            /// </summary>
+            public double MaxOvershoot { get; set; } = 0.03;
+
+            /// <summary>
+            /// Output clamp limit sent to vJoy (<= 1.0). Using slightly less than 1.0 avoids
+            /// the vJoy axis sticking at the hard maximum.
+            /// </summary>
+            public double OutputLimit { get; set; } = 0.999;
+        }
+
         public double Deadzone { get; set; } = 0.25;
 
         // Higher gains / lower inertia => faster steering. Damping prevents runaway velocity.
@@ -17,6 +55,11 @@ public sealed class EngineOptions
         public double FeedbackTorqueGain { get; set; } = 15.0;
 
         public double MaxDtSeconds { get; set; } = 0.05;
+
+        /// <summary>
+        /// Soft end-stop (soft lock) settings.
+        /// </summary>
+        public SoftLockOptions SoftLock { get; set; } = new();
     }
 
     /// <summary>

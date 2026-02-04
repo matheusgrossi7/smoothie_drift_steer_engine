@@ -272,6 +272,13 @@ public sealed class DriftEngine
         var ffbGain = Math.Clamp(input.FeedbackTorqueGain, 0.0, 200.0);
         var maxDt = Math.Clamp(input.MaxDtSeconds, 0.001, 0.25);
 
+        var softLock = input.SoftLock ?? new EngineOptions.SteeringPhysicsOptions.SoftLockOptions();
+        var softLockStart = Math.Clamp(softLock.Start, 0.0, 1.0);
+        var softLockStiffness = Math.Clamp(softLock.Stiffness, 0.0, 500.0);
+        var softLockDamping = Math.Clamp(softLock.Damping, 0.0, 200.0);
+        var softLockMaxOvershoot = Math.Clamp(softLock.MaxOvershoot, 0.0, 0.5);
+        var softLockOutputLimit = Math.Clamp(softLock.OutputLimit, 0.1, 1.0);
+
         return new EngineOptions.SteeringPhysicsOptions
         {
             Deadzone = deadzone,
@@ -279,7 +286,16 @@ public sealed class DriftEngine
             Damping = damping,
             DriverTorqueGain = driverGain,
             FeedbackTorqueGain = ffbGain,
-            MaxDtSeconds = maxDt
+            MaxDtSeconds = maxDt,
+            SoftLock = new EngineOptions.SteeringPhysicsOptions.SoftLockOptions
+            {
+                Enabled = softLock.Enabled,
+                Start = softLockStart,
+                Stiffness = softLockStiffness,
+                Damping = softLockDamping,
+                MaxOvershoot = softLockMaxOvershoot,
+                OutputLimit = softLockOutputLimit
+            }
         };
     }
 
