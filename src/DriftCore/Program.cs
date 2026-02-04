@@ -7,7 +7,7 @@ using System.Text.Json;
 // Use `--test` to keep the console visible and print IO logs.
 var isTestMode = args.Contains("--test", StringComparer.OrdinalIgnoreCase);
 
-var cts = new CancellationTokenSource();
+using var cts = new CancellationTokenSource();
 var engineOptions = LoadOptions();
 var engine = new DriftEngine(engineOptions, () => cts.Cancel());
 
@@ -42,10 +42,12 @@ try
 catch (TaskCanceledException)
 {
     // Cancelamento normal.
+    Environment.ExitCode = 0;
 }
 catch (OperationCanceledException)
 {
     // Shutdown/cancel normal.
+    Environment.ExitCode = 0;
 }
 
 EngineOptions LoadOptions()

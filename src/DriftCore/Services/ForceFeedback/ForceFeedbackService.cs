@@ -15,7 +15,6 @@ public sealed class ForceFeedbackService : IDisposable
 
     private GCHandle? _selfHandle;
     private double _latestNormalizedForce;
-    private readonly VJoyFfbDumpLogger _dumpLogger = new();
 
     public double LatestNormalizedForce => Volatile.Read(ref _latestNormalizedForce);
 
@@ -101,8 +100,6 @@ public sealed class ForceFeedbackService : IDisposable
             if (handle.Target is not ForceFeedbackService service)
                 return;
 
-            service._dumpLogger.TryLogPacket(ffbDataPtr);
-
             if (VJoyFfbInterop.TryGetSignedNormalizedForce(ffbDataPtr, out var normalized, out _))
                 service.UpdateLatestForce(normalized);
         }
@@ -153,7 +150,6 @@ public sealed class ForceFeedbackService : IDisposable
             _selfHandle.Value.Free();
             _selfHandle = null;
         }
-        _dumpLogger.Dispose();
     }
 }
 
