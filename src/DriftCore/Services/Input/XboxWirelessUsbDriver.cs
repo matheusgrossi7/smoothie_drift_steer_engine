@@ -59,7 +59,6 @@ public sealed class XboxWirelessUsbDriver : IDisposable
     private readonly short[] _learnLastRy;
     private readonly int[] _learnEnergy;
     private readonly bool[] _learnSeen;
-    private volatile bool _learnAnyMotion;
 
     // Motion/variance tracking per byte index (within the 29-byte wireless input report).
     // Helps selecting the payload window that actually changes with user input.
@@ -75,7 +74,7 @@ public sealed class XboxWirelessUsbDriver : IDisposable
     // The wireless receiver multiplexes non-input traffic (status/battery/voice) on the same IN pipe.
     // For real controller state we only accept the known 29-byte "input" report that starts with:
     //   00 <pad:1..4> 00 F0 00 13 ...
-    // The exact start of the XInput-like state payload is learned and locked-on (typically offset 6).
+    // DriftMapper capture indicates the XInput-like state payload starts at offset 6.
     //
     // Then, to suppress single-frame glitches, we apply a light stabilization filter:
     // publish every valid report, but ignore clearly-suspicious one-frame outliers unless
@@ -84,8 +83,8 @@ public sealed class XboxWirelessUsbDriver : IDisposable
     private const int WirelessStateOffsetMin = 6;
     private const int WirelessStateOffsetMax = WirelessInputReportLength - 12; // inclusive
 
-    // NOTE: The wireless receiver payload layout varies from our initial assumptions.
-    // We therefore learn the most plausible XInput-like payload offset and lock onto it.
+    // NOTE: We intentionally do NOT do runtime guessing/learning here.
+    // If a machine/receiver revision differs, use DRIFT_USB_OFFSET to override.
 
     // Stabilization: hold a pending outlier until it repeats.
     private bool _hasPending;
@@ -203,7 +202,9 @@ public sealed class XboxWirelessUsbDriver : IDisposable
         _dumpRemaining = _dumpEnabled ? Math.Clamp(dumpCount > 0 ? dumpCount : 5, 1, 200) : 0;
 
         _forcedOffset = ParseOptionalIntEnv("DRIFT_USB_OFFSET");
-        _lockedOffset = _forcedOffset >= WirelessStateOffsetMin && _forcedOffset <= WirelessStateOffsetMax ? _forcedOffset : -1;
+        _lockedOffset = _forcedOffset >= WirelessStateOffsetMin && _forcedOffset <= WirelessStateOffsetMax
+            ? _forcedOffset
+            : WirelessStateOffsetMin; // fixed mapping from DriftMapper capture
         _offsetVotes = new int[WirelessStateOffsetMax + 1];
 
         _learnLastButtons = new ushort[WirelessStateOffsetMax + 1];
@@ -215,8 +216,6 @@ public sealed class XboxWirelessUsbDriver : IDisposable
         _learnLastRy = new short[WirelessStateOffsetMax + 1];
         _learnEnergy = new int[WirelessStateOffsetMax + 1];
         _learnSeen = new bool[WirelessStateOffsetMax + 1];
-
-        _learnAnyMotion = false;
         _prevReport = new byte[WirelessInputReportLength];
         _byteMotion = new int[WirelessInputReportLength];
     }
@@ -611,7 +610,6 @@ public sealed class XboxWirelessUsbDriver : IDisposable
         _hasStable = false;
         _hasPrevReport = false;
         Array.Clear(_byteMotion, 0, _byteMotion.Length);
-        _learnAnyMotion = false;
         Volatile.Write(ref _statPayloadOffset, -1);
     }
 
@@ -774,92 +772,11 @@ public sealed class XboxWirelessUsbDriver : IDisposable
         if (!LooksLikeWirelessInputHeader(report, bytesRead))
             return false;
 
-        // If an offset was forced (or previously locked), use it exclusively.
-        if (_lockedOffset >= WirelessStateOffsetMin && _lockedOffset <= WirelessStateOffsetMax)
-        {
-            payloadOffset = _lockedOffset;
-            return TryReadXInputLikeAt(report, bytesRead, payloadOffset,
-                out buttons, out leftTrigger, out rightTrigger, out leftThumbX, out leftThumbY, out rightThumbX, out rightThumbY);
-        }
-
-        // Otherwise: scan candidates and vote for the most plausible.
-        // IMPORTANT: do not lock purely on "rest-looking" frames. We only lock once
-        // we see actual motion on some candidate offset.
-        var bestOffset = -1;
-        var bestScore = int.MinValue;
-        ushort bestButtons = 0;
-        byte bestLt = 0;
-        byte bestRt = 0;
-        short bestLx = 0;
-        short bestLy = 0;
-        short bestRx = 0;
-        short bestRy = 0;
-
-        for (int off = WirelessStateOffsetMin; off <= WirelessStateOffsetMax; off++)
-        {
-            if (!TryReadXInputLikeAt(report, bytesRead, off, out var b, out var lt, out var rt, out var lx, out var ly, out var rx, out var ry))
-                continue;
-
-            UpdateLearning(off, b, lt, rt, lx, ly, rx, ry);
-
-            var score = ScoreXInputLikeDecode(b, lt, rt, lx, ly, rx, ry, motionMode: _learnAnyMotion);
-            if (score == int.MinValue)
-                continue;
-
-            // Prefer offsets that actually show motion when the user moves.
-            // Small bonus, capped, so plausibility still matters.
-            var energy = _learnEnergy[off];
-            score += Math.Min(120, energy / 800);
-
-            // Prefer offsets whose 12-byte window has real byte-level motion.
-            var motionWindow = GetMotionWindowScore(off);
-            score += Math.Min(220, motionWindow / 40);
-
-            if (score > bestScore)
-            {
-                bestScore = score;
-                bestOffset = off;
-                bestButtons = b;
-                bestLt = lt;
-                bestRt = rt;
-                bestLx = lx;
-                bestLy = ly;
-                bestRx = rx;
-                bestRy = ry;
-            }
-        }
-
-        if (bestOffset < 0)
-            return false;
-
-        // Vote and lock-on if this offset consistently wins.
-        _offsetVotes[bestOffset]++;
-        var secondBestVotes = 0;
-        for (int off = WirelessStateOffsetMin; off <= WirelessStateOffsetMax; off++)
-        {
-            if (off == bestOffset) continue;
-            var v = _offsetVotes[off];
-            if (v > secondBestVotes) secondBestVotes = v;
-        }
-
-        // Lock quickly, but require a margin to avoid flapping.
-        // Only lock after we've observed some motion on at least one candidate offset.
-        if (_learnAnyMotion && _offsetVotes[bestOffset] >= 8 && _offsetVotes[bestOffset] - secondBestVotes >= 4)
-        {
-            _lockedOffset = bestOffset;
-            if (_dumpEnabled)
-                Console.Error.WriteLine($"[USB] Locked wireless payload offset: {_lockedOffset}");
-        }
-
-        payloadOffset = bestOffset;
-        buttons = bestButtons;
-        leftTrigger = bestLt;
-        rightTrigger = bestRt;
-        leftThumbX = bestLx;
-        leftThumbY = bestLy;
-        rightThumbX = bestRx;
-        rightThumbY = bestRy;
-        return true;
+        // Deterministic mapping: payload starts at offset 6 (derived from DriftMapper).
+        // DRIFT_USB_OFFSET can override this if needed.
+        payloadOffset = _lockedOffset;
+        return TryReadXInputLikeAt(report, bytesRead, payloadOffset,
+            out buttons, out leftTrigger, out rightTrigger, out leftThumbX, out leftThumbY, out rightThumbX, out rightThumbY);
     }
 
     private static int ScoreXInputLikeDecode(ushort buttons, byte lt, byte rt, short lx, short ly, short rx, short ry, bool motionMode)
@@ -947,9 +864,7 @@ public sealed class XboxWirelessUsbDriver : IDisposable
 
         // If we see any meaningful motion, allow locking.
         if (delta >= 5000)
-            _learnAnyMotion = true;
-
-        _learnLastButtons[offset] = buttons;
+            _learnLastButtons[offset] = buttons;
         _learnLastLt[offset] = lt;
         _learnLastRt[offset] = rt;
         _learnLastLx[offset] = lx;
@@ -986,7 +901,7 @@ public sealed class XboxWirelessUsbDriver : IDisposable
 
         // If there's meaningful motion anywhere in the report, allow lock-on.
         if (totalDelta >= 12)
-            _learnAnyMotion = true;
+            _ = totalDelta;
     }
 
     private int GetMotionWindowScore(int offset)
