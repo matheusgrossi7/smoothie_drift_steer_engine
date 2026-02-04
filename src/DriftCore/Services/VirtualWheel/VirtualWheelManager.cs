@@ -75,7 +75,7 @@ public sealed class VirtualWheelManager : IDisposable
         VJoyNative.SetAxis(state.SteeringX, _deviceId, HidUsage.HID_USAGE_X);
         VJoyNative.SetAxis(state.BrakeY, _deviceId, HidUsage.HID_USAGE_Y);
         VJoyNative.SetAxis(state.ThrottleZ, _deviceId, HidUsage.HID_USAGE_Z);
-        VJoyNative.SetAxis(state.ClutchRx, _deviceId, HidUsage.HID_USAGE_RX);
+        VJoyNative.SetAxis(state.Rx, _deviceId, HidUsage.HID_USAGE_RX);
 
         // Continuous POV (1)
         VJoyNative.SetContPov(state.Pov1, _deviceId, 1);

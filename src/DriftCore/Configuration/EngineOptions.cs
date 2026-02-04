@@ -17,11 +17,6 @@ public sealed class EngineOptions
     public int VJoyDeviceId { get; set; } = 1;
 
     /// <summary>
-    /// If true, LB becomes a digital clutch. Otherwise, uses the right stick Y axis.
-    /// </summary>
-    public bool UseLbAsClutch { get; set; } = false;
-
-    /// <summary>
     /// Enables input smoothing.
     /// </summary>
     public bool SmoothingEnabled { get; set; } = true;

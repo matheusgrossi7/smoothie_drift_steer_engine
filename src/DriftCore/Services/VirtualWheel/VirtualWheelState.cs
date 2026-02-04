@@ -14,7 +14,7 @@ public readonly struct VirtualWheelState
     public int SteeringX { get; }
     public int BrakeY { get; }
     public int ThrottleZ { get; }
-    public int ClutchRx { get; }
+    public int Rx { get; }
 
     /// <summary>
     /// Continuous POV hat in hundredths of a degree (0..35900), or -1 for neutral.
@@ -23,17 +23,17 @@ public readonly struct VirtualWheelState
 
     public WheelButtons Buttons { get; }
 
-    private VirtualWheelState(int steeringX, int brakeY, int throttleZ, int clutchRx, int pov1, WheelButtons buttons)
+    private VirtualWheelState(int steeringX, int brakeY, int throttleZ, int rx, int pov1, WheelButtons buttons)
     {
         SteeringX = ClampAxis(steeringX);
         BrakeY = ClampAxis(brakeY);
         ThrottleZ = ClampAxis(throttleZ);
-        ClutchRx = ClampAxis(clutchRx);
+        Rx = ClampAxis(rx);
         Pov1 = pov1;
         Buttons = buttons;
     }
 
-    public static VirtualWheelState FromGamepad(Gamepad gamepad, double steeringNormalized, bool useLbAsClutch)
+    public static VirtualWheelState FromGamepad(Gamepad gamepad, double steeringNormalized)
     {
         // Steering: -1..1 -> 0..32768
         var steeringX = AxisFromSignedNormalized(steeringNormalized);
@@ -42,21 +42,18 @@ public readonly struct VirtualWheelState
         var brakeY = AxisFromUnsignedByte(gamepad.LeftTrigger);
         var throttleZ = AxisFromUnsignedByte(gamepad.RightTrigger);
 
-        // Clutch:
-        // - If useLbAsClutch=true, LB becomes a digital clutch (0/100%).
-        // - Otherwise, uses the right stick Y axis, upper half only.
-        var clutchRx = useLbAsClutch
-            ? AxisFromDigitalButton(gamepad.Buttons.HasFlag(GamepadButtons.LeftShoulder))
-            : AxisFromRightStickUpHalf(gamepad.RightThumbY);
+        // vJoy Rx: maps to the right stick X axis (horizontal), with deadzone.
+        const double rxDeadzone = 0.4;
+        var rx = AxisFromSignedShortWithDeadzone(gamepad.RightThumbX, rxDeadzone);
 
         // D-Pad -> continuous POV (degrees * 100)
         int pov1 = PovFromDpad(gamepad.Buttons);
 
-        var buttons = WheelButtonMapper.FromGamepad(gamepad, useLbAsClutch);
-        return new VirtualWheelState(steeringX, brakeY, throttleZ, clutchRx, pov1, buttons);
+        var buttons = WheelButtonMapper.FromGamepad(gamepad);
+        return new VirtualWheelState(steeringX, brakeY, throttleZ, rx, pov1, buttons);
     }
 
-    public static VirtualWheelState Empty => new(16384, 0, 0, 0, -1, WheelButtons.None);
+    public static VirtualWheelState Empty => new(16384, 0, 0, 16384, -1, WheelButtons.None);
 
     private static int ClampAxis(int value) => Math.Clamp(value, 0, 32768);
 
@@ -73,22 +70,28 @@ public readonly struct VirtualWheelState
         return ClampAxis((int)Math.Round(value * (32768.0 / 255.0)));
     }
 
-    private static int AxisFromRightStickUpHalf(short rightThumbY)
+    private static int AxisFromSignedShort(short value)
     {
-        // rightThumbY: [-32768..32767] (up is positive)
-        // Normalize to [0..1] for the "up" direction only.
-        double up = rightThumbY / 32767.0;
-        up = Math.Clamp(up, 0.0, 1.0);
-
-        // Only the upper half of the travel is used.
-        const double threshold = 0.5;
-        if (up <= threshold) return 0;
-
-        double scaled = (up - threshold) / (1.0 - threshold); // 0..1
-        return ClampAxis((int)Math.Round(scaled * 32768.0));
+        // value: [-32768..32767] => normalized [-1..1] => [0..32768]
+        return AxisFromSignedNormalized(value / 32767.0);
     }
 
-    private static int AxisFromDigitalButton(bool pressed) => pressed ? 32768 : 0;
+    private static int AxisFromSignedShortWithDeadzone(short value, double deadzone)
+    {
+        deadzone = Math.Clamp(deadzone, 0.0, 0.99);
+
+        double normalized = value / 32767.0;
+        normalized = Math.Clamp(normalized, -1.0, 1.0);
+
+        double abs = Math.Abs(normalized);
+        if (abs <= deadzone) return 16384;
+
+        // Re-scale remaining range so output still reaches full travel.
+        double scaled = (abs - deadzone) / (1.0 - deadzone);
+        scaled = Math.Clamp(scaled, 0.0, 1.0);
+        double signed = Math.CopySign(scaled, normalized);
+        return AxisFromSignedNormalized(signed);
+    }
 
     private static int PovFromDpad(GamepadButtons buttons)
     {
@@ -139,7 +142,7 @@ public enum WheelButtons : uint
 
 internal static class WheelButtonMapper
 {
-    public static WheelButtons FromGamepad(Gamepad gamepad, bool useLbAsClutch)
+    public static WheelButtons FromGamepad(Gamepad gamepad)
     {
         WheelButtons result = WheelButtons.None;
 
@@ -153,7 +156,7 @@ internal static class WheelButtonMapper
         if (buttons.HasFlag(GamepadButtons.Y)) result |= WheelButtons.Button4;
 
         // Shoulder
-        if (!useLbAsClutch && buttons.HasFlag(GamepadButtons.LeftShoulder)) result |= WheelButtons.Button5;
+        if (buttons.HasFlag(GamepadButtons.LeftShoulder)) result |= WheelButtons.Button5;
         if (buttons.HasFlag(GamepadButtons.RightShoulder)) result |= WheelButtons.Button6;
 
         // Menu/View

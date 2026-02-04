@@ -103,7 +103,7 @@ public sealed class DriftEngine
 
         double processed = _inputProcessor.ProcessSteering(input.Steering);
         _lastDebug = _lastDebug.WithProcessed(processed);
-        var state = VirtualWheelState.FromGamepad(input.Gamepad, processed, config.UseLbAsClutch);
+        var state = VirtualWheelState.FromGamepad(input.Gamepad, processed);
 
         _virtualWheel?.SendState(state);
     }
@@ -235,7 +235,6 @@ public sealed class DriftEngine
         {
             InputDeviceIndex = Math.Clamp(input.InputDeviceIndex, 0, 3),
             VJoyDeviceId = Math.Clamp(input.VJoyDeviceId, 1, 16),
-            UseLbAsClutch = input.UseLbAsClutch,
 
             SmoothingEnabled = input.SmoothingEnabled,
             SmoothingValue = Math.Clamp(input.SmoothingValue, 0, 100),
