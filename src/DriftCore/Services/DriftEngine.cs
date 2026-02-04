@@ -1,6 +1,7 @@
 using System.Threading;
 using DriftCore.Configuration;
 using DriftCore.Infrastructure;
+using DriftCore.Services.ForceFeedback;
 using DriftCore.Services.Heartbeat;
 using DriftCore.Services.Input;
 using DriftCore.Services.InputProcessing;
@@ -23,6 +24,8 @@ public sealed class DriftEngine
     private VirtualWheelManager? _virtualWheel;
     private uint _activeVJoyDeviceId;
 
+    private readonly ForceFeedbackService _forceFeedback;
+
     private XboxWirelessUsbDriver? _usbDriver;
     private string _activeUsbGuid = string.Empty;
     private int _activeUsbTimeoutMs;
@@ -35,6 +38,7 @@ public sealed class DriftEngine
         _heartbeat = new HeartbeatMonitor();
         _inputProcessor = new InputProcessor();
         _driverRetryTimer = new HighPrecisionTimer(EngineDefaults.DriverRetryInterval);
+        _forceFeedback = new ForceFeedbackService();
 
         ApplyConfig(options);
     }
@@ -160,13 +164,19 @@ public sealed class DriftEngine
             _activeVJoyDeviceId = desiredDeviceId;
         }
 
-        _virtualWheel.Initialize();
+        if (_virtualWheel.Initialize())
+        {
+            // Start FFB listener after vJoy device is acquired.
+            _forceFeedback.EnsureStarted(_activeVJoyDeviceId);
+        }
     }
 
     private void Cleanup()
     {
         _virtualWheel?.Dispose();
         _virtualWheel = null;
+
+        _forceFeedback.Dispose();
 
         _usbDriver?.Dispose();
         _usbDriver = null;
@@ -200,7 +210,8 @@ public sealed class DriftEngine
 
         _debugCounter = 0;
         var d = _lastDebug;
-        Console.WriteLine($"[IO] {d.Source} | Connected: {d.IsConnected} | Raw: {d.Raw:F3} | Processed: {d.Processed:F3}");
+        var ffb = _forceFeedback.LatestNormalizedForce;
+        Console.WriteLine($"[IO] {d.Source} | Connected: {d.IsConnected} | Raw: {d.Raw:F3} | FFB: {ffb:F3} | Processed: {d.Processed:F3}");
     }
 
     private readonly record struct DebugSnapshot(string Source, bool IsConnected, double Raw, double Processed)
