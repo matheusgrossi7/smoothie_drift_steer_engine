@@ -139,8 +139,6 @@ public enum WheelButtons : uint
 
 internal static class WheelButtonMapper
 {
-    private const byte TriggerPressedThreshold = 30;
-
     public static WheelButtons FromGamepad(Gamepad gamepad, bool useLbAsClutch)
     {
         WheelButtons result = WheelButtons.None;
@@ -171,10 +169,6 @@ internal static class WheelButtonMapper
         if (buttons.HasFlag(GamepadButtons.DPadRight)) result |= WheelButtons.Button12;
         if (buttons.HasFlag(GamepadButtons.DPadDown)) result |= WheelButtons.Button13;
         if (buttons.HasFlag(GamepadButtons.DPadLeft)) result |= WheelButtons.Button14;
-
-        // Triggers como botões (além de eixos Y/Z): útil para binds digitais no jogo
-        if (gamepad.LeftTrigger >= TriggerPressedThreshold) result |= WheelButtons.Button15;
-        if (gamepad.RightTrigger >= TriggerPressedThreshold) result |= WheelButtons.Button16;
 
         return result;
     }
