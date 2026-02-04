@@ -115,8 +115,13 @@ public sealed class InputProcessor
         }
 
         var smoothingValue = Volatile.Read(ref _smoothingValue); // 0..100
-        var t = smoothingValue / 100.0;
-        var maxTorqueRate = Lerp(250.0, 8.0, t);
+        if (smoothingValue <= 0)
+        {
+            _driverTorque = desiredDriverTorque;
+            return;
+        }
+
+        var maxTorqueRate = ComputeMaxTorqueRate(smoothingValue);
         _driverTorque = MoveTowards(_driverTorque, desiredDriverTorque, maxTorqueRate * dtSeconds);
     }
 
@@ -149,6 +154,20 @@ public sealed class InputProcessor
     }
 
     private static double Lerp(double a, double b, double t) => a + ((b - a) * Math.Clamp(t, 0.0, 1.0));
+
+    private static double ComputeMaxTorqueRate(int smoothingValue)
+    {
+        // Map 0..100 -> maxRate..minRate with a progressive curve (more effect at higher values).
+        // Units: torque-units per second.
+        const double maxRate = 350.0;
+        const double minRate = 3.0;
+
+        var t = Math.Clamp(smoothingValue, 0, 100) / 100.0;
+        t = Math.Pow(t, 1.8);
+
+        // Exponential (geometric) interpolation for a wider, more perceptible range.
+        return maxRate * Math.Pow(minRate / maxRate, t);
+    }
 
     private static double MoveTowards(double current, double target, double maxDelta)
     {
