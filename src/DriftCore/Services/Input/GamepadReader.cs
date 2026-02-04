@@ -3,7 +3,7 @@ using Vortice.XInput;
 namespace DriftCore.Services.Input;
 
 /// <summary>
-/// Lê o estado de gamepads XInput conectados ao sistema.
+/// Reads XInput gamepad state from the system.
 /// </summary>
 public static class GamepadReader
 {
@@ -14,7 +14,7 @@ public static class GamepadReader
         if (!IsValidIndex(index)) return GamepadReadResult.Disconnected;
         if (!XInput.GetState((uint)index, out var state)) return GamepadReadResult.Disconnected;
 
-        // Deadzone é aplicada no InputProcessor para manter a lógica centralizada.
+        // Deadzone is applied in InputProcessor to keep the logic centralized.
         double steering = NormalizeAxis(state.Gamepad.LeftThumbX);
 
         return new GamepadReadResult(
@@ -38,14 +38,14 @@ public static class GamepadReader
     private static bool IsValidIndex(int index) => index >= 0 && index <= MaxGamepadIndex;
     private static double NormalizeAxis(short value)
     {
-        // XInput usa [-32768..32767]. Normaliza para [-1..1] sem assimetria.
+        // XInput uses [-32768..32767]. Normalize to [-1..1] without asymmetry.
         double normalized = value < 0 ? value / 32768.0 : value / 32767.0;
         return Math.Clamp(normalized, -1.0, 1.0);
     }
 }
 
 /// <summary>
-/// Resultado imutável da leitura de um gamepad.
+/// Immutable result of a single gamepad read.
 /// </summary>
 public readonly struct GamepadReadResult
 {

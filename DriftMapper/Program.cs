@@ -31,12 +31,12 @@ internal static class Program
         }
         catch (OperationCanceledException)
         {
-            Console.WriteLine("[Mapper] Cancelado.");
+            Console.WriteLine("[Mapper] Canceled.");
             return 1;
         }
         catch (Exception ex)
         {
-            Console.Error.WriteLine($"[Mapper] ERRO: {ex.Message}");
+            Console.Error.WriteLine($"[Mapper] ERROR: {ex.Message}");
             return 1;
         }
     }
@@ -105,18 +105,18 @@ internal static class Program
 
         private static void PrintHelp()
         {
-            Console.WriteLine("DriftMapper - coletor de reports brutos do Xbox 360 Wireless Receiver (WinUSB)\n");
-            Console.WriteLine("Coletar:\n  dotnet run -c Debug --project src/DriftMapper -- --guid {GUID} --out map.json");
-            Console.WriteLine("Analisar:\n  dotnet run -c Debug --project src/DriftMapper -- --analyze map.json");
+            Console.WriteLine("DriftMapper - raw report collector for the Xbox 360 Wireless Receiver (WinUSB)\n");
+            Console.WriteLine("Collect:\n  dotnet run -c Debug --project DriftMapper -- --guid {GUID} --out map.json");
+            Console.WriteLine("Analyze:\n  dotnet run -c Debug --project DriftMapper -- --analyze map.json");
             Console.WriteLine();
-            Console.WriteLine("Opções:");
-            Console.WriteLine("  --guid/-g     Device Interface GUID do WinUSB (opcional; se vazio usa GUID genérico USB)");
-            Console.WriteLine("  --timeout/-t  Timeout do pipe (ms). Padrão: 20");
-            Console.WriteLine("  --seconds/-s  Segundos por etapa. Padrão: 6");
-            Console.WriteLine("  --prep        Segundos de contagem regressiva antes de cada etapa. Padrão: 3");
-            Console.WriteLine("  --max/-m      Máx. amostras por etapa. Padrão: 6000");
-            Console.WriteLine("  --out/-o      Caminho do JSON. Padrão: drift_map_YYYYMMDD_HHMMSS.json");
-            Console.WriteLine("  --manual      Modo manual (pressione ENTER para iniciar cada etapa)");
+            Console.WriteLine("Options:");
+            Console.WriteLine("  --guid/-g     WinUSB Device Interface GUID (optional; if empty, uses the generic USB interface GUID)");
+            Console.WriteLine("  --timeout/-t  Pipe timeout (ms). Default: 20");
+            Console.WriteLine("  --seconds/-s  Seconds per step. Default: 6");
+            Console.WriteLine("  --prep        Countdown seconds before each step. Default: 3");
+            Console.WriteLine("  --max/-m      Max samples per step. Default: 6000");
+            Console.WriteLine("  --out/-o      Output JSON path. Default: drift_map_YYYYMMDD_HHMMSS.json");
+            Console.WriteLine("  --manual      Manual mode (press ENTER to start each step)");
         }
 
         private static string NormalizeGuid(string guid)
@@ -133,7 +133,7 @@ internal static class Program
     {
         public static void Run(CliOptions options)
         {
-            Console.WriteLine("[Mapper] DriftMapper (coleta guiada)");
+            Console.WriteLine("[Mapper] DriftMapper (guided capture)");
             Console.WriteLine($"[Mapper] VID:PID={VendorId:X4}:{ProductId:X4} timeout={options.TimeoutMs}ms step={options.StepSeconds}s max={options.MaxSamplesPerStep}");
             Console.WriteLine($"[Mapper] mode={(options.Manual ? "manual" : "auto")} prep={options.PrepSeconds}s");
 
@@ -152,10 +152,10 @@ internal static class Program
 
             var steps = StepCatalog.DefaultSteps();
 
-            Console.WriteLine("\n[Mapper] Instruções:");
-            Console.WriteLine("- Para cada etapa: faça a ação repetidamente durante a captura.");
-            Console.WriteLine("- Você pode pressionar o botão várias vezes (a ideia é maioria/consistência).");
-            Console.WriteLine("- Para abortar a qualquer momento: Ctrl+C.");
+            Console.WriteLine("\n[Mapper] Instructions:");
+            Console.WriteLine("- For each step: perform the action repeatedly during capture.");
+            Console.WriteLine("- You can press buttons multiple times (the goal is majority/consistency).");
+            Console.WriteLine("- Abort at any time: Ctrl+C.");
             Console.WriteLine();
 
             foreach (var step in steps)
@@ -165,7 +165,7 @@ internal static class Program
 
                 if (options.Manual)
                 {
-                    Console.WriteLine($"Pressione ENTER para iniciar ({options.StepSeconds}s)...");
+                    Console.WriteLine($"Press ENTER to start ({options.StepSeconds}s)...");
                     _ = Console.ReadLine();
                 }
                 else
@@ -177,13 +177,13 @@ internal static class Program
                 session.Steps.Add(captured);
 
                 var quick = Analyzer.QuickStats(captured);
-                Console.WriteLine($"[Mapper] Capturado: {quick.Accepted} amostras válidas | únicos={quick.UniqueFrames} | bytesMaisVariantes={string.Join(",", quick.TopChangingByteIndices)}");
+                Console.WriteLine($"[Mapper] Captured: {quick.Accepted} valid samples | unique={quick.UniqueFrames} | mostChangingBytes={string.Join(",", quick.TopChangingByteIndices)}");
             }
 
             var json = JsonSerializer.Serialize(session, new JsonSerializerOptions { WriteIndented = true });
             File.WriteAllText(options.OutputPath, json);
-            Console.WriteLine($"\n[Mapper] OK. Arquivo salvo em: {Path.GetFullPath(options.OutputPath)}");
-            Console.WriteLine("[Mapper] Próximo passo: rode com --analyze map.json e me mande o output.");
+            Console.WriteLine($"\n[Mapper] OK. Saved file: {Path.GetFullPath(options.OutputPath)}");
+            Console.WriteLine("[Mapper] Next step: run with --analyze map.json and share the output.");
         }
 
         private static void Countdown(int seconds)
@@ -192,7 +192,7 @@ internal static class Program
 
             for (int i = seconds; i >= 1; i--)
             {
-                Console.Write($"[Mapper] Começando em {i}...\r");
+                Console.Write($"[Mapper] Starting in {i}...\r");
                 Thread.Sleep(1000);
             }
             Console.Write(new string(' ', 40) + "\r");
@@ -237,7 +237,7 @@ internal static class Program
                 });
 
                 if ((accepted % 500) == 0)
-                    Console.WriteLine($"[Mapper] ... {accepted} amostras");
+                    Console.WriteLine($"[Mapper] ... {accepted} samples");
             }
 
             captured.EndedUtc = DateTime.UtcNow;
@@ -306,16 +306,16 @@ internal static class Program
             }
 
             if (match is null)
-                throw new InvalidOperationException("Receiver (045E:0719) não encontrado via WinUSB. Verifique o driver e o GUID.");
+                throw new InvalidOperationException("Receiver (045E:0719) not found via WinUSB. Check the driver binding and GUID.");
 
             _device = new USBDevice(match);
             _iface = FindBestInterface(_device);
             if (_iface is null)
-                throw new InvalidOperationException("Nenhuma interface WinUSB adequada foi encontrada.");
+                throw new InvalidOperationException("No suitable WinUSB interface was found.");
 
             _inPipe = _iface.InPipe;
             if (_inPipe is null)
-                throw new InvalidOperationException("Interface selecionada não tem InPipe.");
+                throw new InvalidOperationException("Selected interface has no InPipe.");
 
             try { _readSize = Math.Clamp(_inPipe.MaximumPacketSize, 1, _readBuffer.Length); }
             catch { _readSize = 32; }
@@ -416,37 +416,37 @@ internal static class Program
     {
         public static IReadOnlyList<StepDefinition> DefaultSteps() => new List<StepDefinition>
         {
-            new() { Name = "REST", Instruction = "Solte tudo e não mexa no controle." },
+            new() { Name = "REST", Instruction = "Release everything and do not touch the controller." },
 
-            new() { Name = "A", Instruction = "Aperte o botão A repetidamente." },
-            new() { Name = "B", Instruction = "Aperte o botão B repetidamente." },
-            new() { Name = "X", Instruction = "Aperte o botão X repetidamente." },
-            new() { Name = "Y", Instruction = "Aperte o botão Y repetidamente." },
+            new() { Name = "A", Instruction = "Press the A button repeatedly." },
+            new() { Name = "B", Instruction = "Press the B button repeatedly." },
+            new() { Name = "X", Instruction = "Press the X button repeatedly." },
+            new() { Name = "Y", Instruction = "Press the Y button repeatedly." },
 
-            new() { Name = "LB", Instruction = "Aperte LB repetidamente." },
-            new() { Name = "RB", Instruction = "Aperte RB repetidamente." },
-            new() { Name = "BACK", Instruction = "Aperte BACK repetidamente." },
-            new() { Name = "START", Instruction = "Aperte START repetidamente." },
-            new() { Name = "L3", Instruction = "Clique no analógico esquerdo (L3) repetidamente." },
-            new() { Name = "R3", Instruction = "Clique no analógico direito (R3) repetidamente." },
+            new() { Name = "LB", Instruction = "Press LB repeatedly." },
+            new() { Name = "RB", Instruction = "Press RB repeatedly." },
+            new() { Name = "BACK", Instruction = "Press BACK repeatedly." },
+            new() { Name = "START", Instruction = "Press START repeatedly." },
+            new() { Name = "L3", Instruction = "Press the left stick (L3) repeatedly." },
+            new() { Name = "R3", Instruction = "Press the right stick (R3) repeatedly." },
 
-            new() { Name = "DPAD_UP", Instruction = "Aperte DPAD CIMA repetidamente." },
-            new() { Name = "DPAD_RIGHT", Instruction = "Aperte DPAD DIREITA repetidamente." },
-            new() { Name = "DPAD_DOWN", Instruction = "Aperte DPAD BAIXO repetidamente." },
-            new() { Name = "DPAD_LEFT", Instruction = "Aperte DPAD ESQUERDA repetidamente." },
+            new() { Name = "DPAD_UP", Instruction = "Press DPAD UP repeatedly." },
+            new() { Name = "DPAD_RIGHT", Instruction = "Press DPAD RIGHT repeatedly." },
+            new() { Name = "DPAD_DOWN", Instruction = "Press DPAD DOWN repeatedly." },
+            new() { Name = "DPAD_LEFT", Instruction = "Press DPAD LEFT repeatedly." },
 
-            new() { Name = "LT_PROGRESS", Instruction = "Aperte LT progressivamente (0->100%->0), repetindo." },
-            new() { Name = "RT_PROGRESS", Instruction = "Aperte RT progressivamente (0->100%->0), repetindo." },
+            new() { Name = "LT_PROGRESS", Instruction = "Squeeze LT progressively (0->100%->0), repeating." },
+            new() { Name = "RT_PROGRESS", Instruction = "Squeeze RT progressively (0->100%->0), repeating." },
 
-            new() { Name = "LX_POS", Instruction = "Empurre LX totalmente para a DIREITA, solte, repita." },
-            new() { Name = "LX_NEG", Instruction = "Empurre LX totalmente para a ESQUERDA, solte, repita." },
-            new() { Name = "LY_POS", Instruction = "Empurre LY totalmente para CIMA, solte, repita." },
-            new() { Name = "LY_NEG", Instruction = "Empurre LY totalmente para BAIXO, solte, repita." },
+            new() { Name = "LX_POS", Instruction = "Push LX fully RIGHT, release, repeat." },
+            new() { Name = "LX_NEG", Instruction = "Push LX fully LEFT, release, repeat." },
+            new() { Name = "LY_POS", Instruction = "Push LY fully UP, release, repeat." },
+            new() { Name = "LY_NEG", Instruction = "Push LY fully DOWN, release, repeat." },
 
-            new() { Name = "RX_POS", Instruction = "Empurre RX totalmente para a DIREITA, solte, repita." },
-            new() { Name = "RX_NEG", Instruction = "Empurre RX totalmente para a ESQUERDA, solte, repita." },
-            new() { Name = "RY_POS", Instruction = "Empurre RY totalmente para CIMA, solte, repita." },
-            new() { Name = "RY_NEG", Instruction = "Empurre RY totalmente para BAIXO, solte, repita." },
+            new() { Name = "RX_POS", Instruction = "Push RX fully RIGHT, release, repeat." },
+            new() { Name = "RX_NEG", Instruction = "Push RX fully LEFT, release, repeat." },
+            new() { Name = "RY_POS", Instruction = "Push RY fully UP, release, repeat." },
+            new() { Name = "RY_NEG", Instruction = "Push RY fully DOWN, release, repeat." },
         };
     }
 
@@ -483,7 +483,7 @@ internal static class Program
             var json = File.ReadAllText(path);
             var session = JsonSerializer.Deserialize<MappingSession>(json);
             if (session is null)
-                throw new InvalidOperationException("JSON inválido.");
+                throw new InvalidOperationException("Invalid JSON.");
 
             Console.WriteLine($"[Analyze] Steps: {session.Steps.Count} | createdUtc={session.CreatedUtc:o}");
 
@@ -498,7 +498,7 @@ internal static class Program
                 Console.WriteLine($"samples={step.Samples.Count} totalReads={step.TotalReads} duration={(step.EndedUtc - step.StartedUtc).TotalSeconds:F1}s");
 
                 var top = stats.OrderByDescending(s => s.Range).ThenByDescending(s => s.Distinct).Take(10).ToArray();
-                Console.WriteLine("Top bytes variando: idx:range distinct min max");
+                Console.WriteLine("Top varying bytes: idx:range distinct min max");
                 foreach (var b in top)
                     Console.WriteLine($"  {b.Index,2}: {b.Range,4}  {b.Distinct,4}  {b.Min,3}  {b.Max,3}");
 

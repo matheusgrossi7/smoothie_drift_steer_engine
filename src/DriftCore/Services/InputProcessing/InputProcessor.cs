@@ -5,11 +5,11 @@ using System.Threading;
 namespace DriftCore.Services.InputProcessing;
 
 /// <summary>
-/// Processa steering com suavização e hold de ângulo.
+/// Processes steering input with optional smoothing and angle hold.
 /// </summary>
 public sealed class InputProcessor
 {
-    // Deadzone único aplicado ao input (mantido centralizado aqui).
+    // Single deadzone applied to the input (kept centralized here).
     private const double Deadzone = 0.25;
     private const double SpeedAdjust = 0.5;
     private const double MaxUnitsPerSecond = 1.5;
@@ -34,12 +34,13 @@ public sealed class InputProcessor
 
     public double ProcessSteering(double input)
     {
-        // Input é velocidade (não posição): -1..0 vira para esquerda, 0..1 para direita.
-        // Ao soltar e voltar para 0, para de mover e mantém o ângulo atual.
+        // Input represents angular velocity (not position):
+        // -1..0 turns left, 0..1 turns right.
+        // When the stick returns to 0, the wheel stops moving and holds the current angle.
 
         input = Math.Clamp(input, -1.0, 1.0);
 
-        // Deadzone para evitar drift perto do zero.
+        // Deadzone to avoid drift around zero.
         var absInput = Math.Abs(input);
         if (absInput <= Deadzone)
         {
@@ -47,16 +48,26 @@ public sealed class InputProcessor
         }
         else
         {
-            // Remapeia para manter resposta linear fora da deadzone.
+            // Remap to keep a linear response outside the deadzone.
             var scaled = (absInput - Deadzone) / (1.0 - Deadzone);
             input = Math.Sign(input) * Math.Clamp(scaled, 0.0, 1.0);
         }
 
-        // Suavização opcional do input (passthrough por enquanto).
+        // Optional input smoothing (simple low-pass filter).
         if (Volatile.Read(ref _smoothingEnabled))
         {
-            _ = Volatile.Read(ref _smoothingValue);
-            // Intencionalmente sem aplicar smoothing no input neste momento.
+            var smoothingValue = Volatile.Read(ref _smoothingValue); // 0..100
+
+            // 0 => no smoothing (alpha=1), 100 => strong smoothing (alpha~0.05)
+            var t = smoothingValue / 100.0;
+            var alpha = Math.Clamp(1.0 - (t * 0.95), 0.05, 1.0);
+
+            _smoothedInput += (input - _smoothedInput) * alpha;
+            input = _smoothedInput;
+        }
+        else
+        {
+            _smoothedInput = input;
         }
 
         var now = Stopwatch.GetTimestamp();
@@ -77,18 +88,18 @@ public sealed class InputProcessor
 
         var dtSeconds = deltaTicks / (double)Stopwatch.Frequency;
 
-        // Ajuste global de velocidade do giro (0..1).
+        // Global steering speed adjust (0..1).
         var speedAdjust = Math.Clamp(SpeedAdjust, 0.0, 1.0);
 
         var newPosition = _steeringPosition + (input * MaxUnitsPerSecond * speedAdjust * dtSeconds);
         _steeringPosition = Math.Clamp(newPosition, -1.0, 1.0);
 
-        // Output linear: posição normalizada atual do volante.
+        // Linear output: current normalized wheel position.
         return _steeringPosition;
     }
 
     /// <summary>
-    /// Reseta o estado do processador (útil em reconexões).
+    /// Resets the processor state (useful on reconnects).
     /// </summary>
     public void Reset()
     {

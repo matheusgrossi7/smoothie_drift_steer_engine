@@ -1,7 +1,7 @@
 namespace DriftCore.Infrastructure;
 
 /// <summary>
-/// Gerencia shutdown gracioso e forçado da aplicação.
+/// Coordinates graceful and forced application shutdown.
 /// </summary>
 public sealed class ShutdownManager
 {
@@ -18,7 +18,7 @@ public sealed class ShutdownManager
     }
 
     /// <summary>
-    /// Inicia shutdown gracioso.
+    /// Requests a graceful shutdown.
     /// </summary>
     public void RequestShutdown(string reason)
     {
@@ -30,7 +30,7 @@ public sealed class ShutdownManager
     }
 
     /// <summary>
-    /// Inicia shutdown com timeout forçado.
+    /// Requests shutdown and schedules a forced exit after the configured timeout.
     /// </summary>
     public void RequestForcedShutdown(string reason)
     {
@@ -47,7 +47,7 @@ public sealed class ShutdownManager
         _ = Task.Run(async () =>
         {
             await Task.Delay(_shutdownTimeout());
-            Console.WriteLine("[Shutdown] Timeout. Forçando encerramento...");
+            Console.WriteLine("[Shutdown] Timeout reached. Forcing exit...");
             Environment.Exit(0);
         });
     }

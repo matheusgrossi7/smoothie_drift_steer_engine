@@ -3,7 +3,7 @@ using System.Runtime.InteropServices;
 namespace DriftCore.Infrastructure;
 
 /// <summary>
-/// Gerencia visibilidade do console no Windows.
+/// Manages console window visibility on Windows.
 /// </summary>
 public static class ConsoleManager
 {
@@ -24,7 +24,7 @@ public static class ConsoleManager
 
     public static void ShowTestModeBanner()
     {
-        Console.WriteLine("=== MODO DE TESTE ATIVADO ===");
-        Console.WriteLine("Logs de input serão exibidos no console.");
+        Console.WriteLine("=== TEST MODE ENABLED ===");
+        Console.WriteLine("Input logs will be printed to the console.");
     }
 }

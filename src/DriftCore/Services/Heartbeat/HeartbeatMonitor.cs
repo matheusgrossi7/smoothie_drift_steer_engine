@@ -1,9 +1,10 @@
 using System.Diagnostics;
 using System.Threading;
+
 namespace DriftCore.Services.Heartbeat;
 
 /// <summary>
-/// Monitora heartbeat com timer de alta precisão.
+/// Monitors a periodic heartbeat using a high-precision timer.
 /// </summary>
 public sealed class HeartbeatMonitor
 {

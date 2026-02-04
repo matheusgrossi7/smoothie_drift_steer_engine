@@ -3,8 +3,9 @@ using DriftCore.Infrastructure;
 using DriftCore.Services;
 using System.Text.Json;
 
-// Modo de teste
-bool isTestMode = args.Contains("--test");
+// Entry point for the Drift engine.
+// Use `--test` to keep the console visible and print IO logs.
+var isTestMode = args.Contains("--test", StringComparer.OrdinalIgnoreCase);
 
 var cts = new CancellationTokenSource();
 var engineOptions = LoadOptions();
@@ -49,7 +50,8 @@ catch (OperationCanceledException)
 
 EngineOptions LoadOptions()
 {
-    var path = Path.Combine(AppContext.BaseDirectory, "appSettings.json");
+    const string appSettingsFileName = "appsettings.json";
+    var path = Path.Combine(AppContext.BaseDirectory, appSettingsFileName);
     if (!File.Exists(path))
         return new EngineOptions();
 
@@ -65,7 +67,7 @@ EngineOptions LoadOptions()
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"[Config] Falha ao ler appSettings.json: {ex.Message}");
+        Console.WriteLine($"[Config] Failed to read {appSettingsFileName}: {ex.Message}");
         return new EngineOptions();
     }
 }

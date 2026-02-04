@@ -5,7 +5,7 @@ using System.Threading;
 namespace DriftCore.Infrastructure;
 
 /// <summary>
-/// Timer de alta precisão baseado em Stopwatch para hot paths.
+/// High-precision timer based on <see cref="Stopwatch"/> for hot paths.
 /// </summary>
 public sealed class HighPrecisionTimer
 {
@@ -19,7 +19,7 @@ public sealed class HighPrecisionTimer
     }
 
     /// <summary>
-    /// Retorna true se o intervalo passou desde a última chamada que retornou true.
+    /// Returns true if the interval has elapsed since the last call that returned true.
     /// </summary>
     public bool TryElapse()
     {
@@ -35,7 +35,7 @@ public sealed class HighPrecisionTimer
     }
 
     /// <summary>
-    /// Atualiza o intervalo de disparo do timer.
+    /// Updates the timer interval.
     /// </summary>
     public void UpdateInterval(TimeSpan interval)
     {
@@ -45,7 +45,7 @@ public sealed class HighPrecisionTimer
     }
 
     /// <summary>
-    /// Reseta o timer.
+    /// Resets the timer.
     /// </summary>
     public void Reset()
     {

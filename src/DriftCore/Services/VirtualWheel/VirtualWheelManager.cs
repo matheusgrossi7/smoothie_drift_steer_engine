@@ -4,7 +4,7 @@ using System.Runtime.InteropServices;
 namespace DriftCore.Services.VirtualWheel;
 
 /// <summary>
-/// Gerencia um volante virtual via vJoy (DirectInput).
+/// Manages a virtual wheel via vJoy (DirectInput).
 /// </summary>
 public sealed class VirtualWheelManager : IDisposable
 {
@@ -23,46 +23,46 @@ public sealed class VirtualWheelManager : IDisposable
     {
         try
         {
-            Console.WriteLine($"[VirtualWheel] Inicializando vJoy (DeviceId={_deviceId})...");
+            Console.WriteLine($"[VirtualWheel] Initializing vJoy (DeviceId={_deviceId})...");
 
             if (!VJoyNative.vJoyEnabled())
             {
-                Console.WriteLine("[ERRO] vJoy não está habilitado. Instale/ative o driver vJoy.");
+                Console.WriteLine("[ERROR] vJoy is not enabled. Install/enable the vJoy driver.");
                 return false;
             }
 
             var status = VJoyNative.GetVJDStatus(_deviceId);
             if (status is VjdStat.VJD_STAT_MISS)
             {
-                Console.WriteLine("[ERRO] Dispositivo vJoy não existe (VJD_STAT_MISS). Configure um Device no vJoyConf.");
+                Console.WriteLine("[ERROR] vJoy device not found (VJD_STAT_MISS). Configure a device in vJoyConf.");
                 return false;
             }
 
             if (status is VjdStat.VJD_STAT_BUSY)
             {
-                Console.WriteLine("[ERRO] Dispositivo vJoy está ocupado (VJD_STAT_BUSY).");
+                Console.WriteLine("[ERROR] vJoy device is busy (VJD_STAT_BUSY).");
                 return false;
             }
 
             if (!VJoyNative.AcquireVJD(_deviceId))
             {
-                Console.WriteLine("[ERRO] Falha ao adquirir o dispositivo vJoy.");
+                Console.WriteLine("[ERROR] Failed to acquire vJoy device.");
                 return false;
             }
 
             _acquired = true;
             VJoyNative.ResetVJD(_deviceId);
-            Console.WriteLine("[VirtualWheel] Conectado!");
+            Console.WriteLine("[VirtualWheel] Connected!");
             return true;
         }
         catch (DllNotFoundException)
         {
-            Console.WriteLine("[ERRO] vJoyInterface.dll não encontrada. Verifique instalação do vJoy e arquitetura x64.");
+            Console.WriteLine("[ERROR] vJoyInterface.dll not found. Verify vJoy installation and x64 architecture.");
             return false;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[ERRO] Falha vJoy: {ex.Message}");
+            Console.WriteLine($"[ERROR] vJoy failure: {ex.Message}");
             return false;
         }
     }
@@ -71,16 +71,16 @@ public sealed class VirtualWheelManager : IDisposable
     {
         if (!_acquired || _disposed) return;
 
-        // Eixos (padrão sugerido)
+        // Axes
         VJoyNative.SetAxis(state.SteeringX, _deviceId, HidUsage.HID_USAGE_X);
         VJoyNative.SetAxis(state.BrakeY, _deviceId, HidUsage.HID_USAGE_Y);
         VJoyNative.SetAxis(state.ThrottleZ, _deviceId, HidUsage.HID_USAGE_Z);
         VJoyNative.SetAxis(state.ClutchRx, _deviceId, HidUsage.HID_USAGE_RX);
 
-        // POV contínuo (1)
+        // Continuous POV (1)
         VJoyNative.SetContPov(state.Pov1, _deviceId, 1);
 
-        // Botões (1..32)
+        // Buttons (1..32)
         SetButtons(state.Buttons);
     }
 
@@ -99,7 +99,7 @@ public sealed class VirtualWheelManager : IDisposable
         if (_disposed) return;
         _disposed = true;
 
-        Console.WriteLine("[VirtualWheel] Desconectando...");
+        Console.WriteLine("[VirtualWheel] Disconnecting...");
 
         try
         {
@@ -112,10 +112,10 @@ public sealed class VirtualWheelManager : IDisposable
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[VirtualWheel] Erro: {ex.Message}");
+            Console.WriteLine($"[VirtualWheel] Error: {ex.Message}");
         }
 
-        Console.WriteLine("[VirtualWheel] Desconectado.");
+        Console.WriteLine("[VirtualWheel] Disconnected.");
     }
 }
 

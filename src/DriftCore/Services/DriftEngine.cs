@@ -9,7 +9,7 @@ using DriftCore.Services.VirtualWheel;
 namespace DriftCore.Services;
 
 /// <summary>
-/// Motor principal do Drift. Orquestra leitura de input, processamento e saída.
+/// Drift engine main loop. Orchestrates input reads, processing, and output.
 /// </summary>
 public sealed class DriftEngine
 {
@@ -27,6 +27,8 @@ public sealed class DriftEngine
     private string _activeUsbGuid = string.Empty;
     private int _activeUsbTimeoutMs;
 
+    private DebugSnapshot _lastDebug;
+
     public DriftEngine(EngineOptions options, Action stopApplication)
     {
         _shutdown = new ShutdownManager(stopApplication, () => EngineDefaults.ShutdownTimeout);
@@ -41,7 +43,7 @@ public sealed class DriftEngine
 
     public Task RunAsync(CancellationToken stoppingToken)
     {
-        Console.WriteLine("[Engine] Iniciando...");
+        Console.WriteLine("[Engine] Starting...");
 
         try
         {
@@ -51,7 +53,7 @@ public sealed class DriftEngine
         finally
         {
             Cleanup();
-            Console.WriteLine("[Engine] Encerrado.");
+            Console.WriteLine("[Engine] Stopped.");
         }
 
         return Task.CompletedTask;
@@ -63,7 +65,7 @@ public sealed class DriftEngine
         {
             if (_heartbeat.IsExpired())
             {
-                _shutdown.RequestForcedShutdown("Heartbeat expirado");
+                _shutdown.RequestForcedShutdown("Heartbeat expired");
                 break;
             }
 
@@ -90,6 +92,8 @@ public sealed class DriftEngine
         var config = Volatile.Read(ref _config);
         var input = ReadInput(config);
 
+        _lastDebug = DebugSnapshot.From(config, input);
+
         if (!input.IsConnected)
         {
             _inputProcessor.Reset();
@@ -98,6 +102,7 @@ public sealed class DriftEngine
         }
 
         double processed = _inputProcessor.ProcessSteering(input.Steering);
+        _lastDebug = _lastDebug.WithProcessed(processed);
         var state = VirtualWheelState.FromGamepad(input.Gamepad, processed, config.UseLbAsClutch);
 
         _virtualWheel?.SendState(state);
@@ -148,15 +153,12 @@ public sealed class DriftEngine
         var config = Volatile.Read(ref _config);
         var desiredDeviceId = (uint)Math.Clamp(config.VJoyDeviceId, 1, 16);
 
-        if (_virtualWheel != null && _activeVJoyDeviceId != desiredDeviceId)
+        if (_virtualWheel == null || _activeVJoyDeviceId != desiredDeviceId)
         {
-            _virtualWheel.Dispose();
-            _virtualWheel = null;
+            _virtualWheel?.Dispose();
+            _virtualWheel = new VirtualWheelManager(desiredDeviceId);
+            _activeVJoyDeviceId = desiredDeviceId;
         }
-
-        _virtualWheel?.Dispose();
-        _virtualWheel = new VirtualWheelManager(desiredDeviceId);
-        _activeVJoyDeviceId = desiredDeviceId;
 
         _virtualWheel.Initialize();
     }
@@ -178,7 +180,7 @@ public sealed class DriftEngine
 
     public void RegisterHeartbeat() => _heartbeat.Register();
 
-    public void Shutdown() => _shutdown.RequestShutdown("Shutdown solicitado");
+    public void Shutdown() => _shutdown.RequestShutdown("Shutdown requested");
 
     public void ForceShutdown(string reason) => _shutdown.RequestForcedShutdown(reason);
 
@@ -197,21 +199,19 @@ public sealed class DriftEngine
         if (++_debugCounter < interval) return;
 
         _debugCounter = 0;
-        var config = Volatile.Read(ref _config);
-        var input = ReadInput(config);
-        double processed = _inputProcessor.ProcessSteering(input.Steering);
+        var d = _lastDebug;
+        Console.WriteLine($"[IO] {d.Source} | Connected: {d.IsConnected} | Raw: {d.Raw:F3} | Processed: {d.Processed:F3}");
+    }
 
-        var src = config.UseWinUsbReceiver ? "WinUSB" : $"XInput{config.InputDeviceIndex}";
-        if (config.UseWinUsbReceiver && _usbDriver != null)
+    private readonly record struct DebugSnapshot(string Source, bool IsConnected, double Raw, double Processed)
+    {
+        public static DebugSnapshot From(EngineOptions config, GamepadReadResult input)
         {
-            // Truncado: mostrar apenas até 'Processed' conforme solicitado
-            var s = _usbDriver.GetStats();
-            Console.WriteLine($"[IO] {src} | Connected: {input.IsConnected} | Raw: {input.Steering:F3} | Processed: {processed:F3}");
+            var src = config.UseWinUsbReceiver ? "WinUSB" : $"XInput{config.InputDeviceIndex}";
+            return new DebugSnapshot(src, input.IsConnected, input.Steering, 0d);
         }
-        else
-        {
-            Console.WriteLine($"[IO] {src} | Connected: {input.IsConnected} | Raw: {input.Steering:F3} | Processed: {processed:F3} | vJoy: {_virtualWheel?.IsConnected == true}");
-        }
+
+        public DebugSnapshot WithProcessed(double processed) => this with { Processed = processed };
     }
 
     private void ApplyConfig(EngineOptions config)

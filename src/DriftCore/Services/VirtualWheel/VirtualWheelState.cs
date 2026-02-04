@@ -3,11 +3,11 @@ using Vortice.XInput;
 namespace DriftCore.Services.VirtualWheel;
 
 /// <summary>
-/// Estado imutável do volante virtual (vJoy) a ser enviado para o jogo.
+/// Immutable virtual wheel state (vJoy) to be sent to the game.
 /// </summary>
 /// <remarks>
-/// vJoy usa, por padrão, eixos no intervalo 0..32768.
-/// Steering aqui é X (0=esquerda, 16384=centro, 32768=direita).
+/// vJoy axes typically use the 0..32768 range.
+/// Steering uses X (0=left, 16384=center, 32768=right).
 /// </remarks>
 public readonly struct VirtualWheelState
 {
@@ -17,7 +17,7 @@ public readonly struct VirtualWheelState
     public int ClutchRx { get; }
 
     /// <summary>
-    /// POV contínuo em centésimos de grau (0..35900) ou -1 para neutro.
+    /// Continuous POV hat in hundredths of a degree (0..35900), or -1 for neutral.
     /// </summary>
     public int Pov1 { get; }
 
@@ -42,14 +42,14 @@ public readonly struct VirtualWheelState
         var brakeY = AxisFromUnsignedByte(gamepad.LeftTrigger);
         var throttleZ = AxisFromUnsignedByte(gamepad.RightTrigger);
 
-        // Embreagem (clutch):
-        // - Se UseLbAsClutch=true, LB vira embreagem digital (0/100%).
-        // - Caso contrário, usa analógico direito (eixo Y) apenas metade superior.
+        // Clutch:
+        // - If useLbAsClutch=true, LB becomes a digital clutch (0/100%).
+        // - Otherwise, uses the right stick Y axis, upper half only.
         var clutchRx = useLbAsClutch
             ? AxisFromDigitalButton(gamepad.Buttons.HasFlag(GamepadButtons.LeftShoulder))
             : AxisFromRightStickUpHalf(gamepad.RightThumbY);
 
-        // D-Pad -> POV contínuo (graus * 100)
+        // D-Pad -> continuous POV (degrees * 100)
         int pov1 = PovFromDpad(gamepad.Buttons);
 
         var buttons = WheelButtonMapper.FromGamepad(gamepad, useLbAsClutch);
@@ -99,7 +99,7 @@ public readonly struct VirtualWheelState
 
         if (!up && !down && !left && !right) return -1;
 
-        // vJoy POV contínuo: 0=up, 9000=right, 18000=down, 27000=left
+        // vJoy continuous POV: 0=up, 9000=right, 18000=down, 27000=left
         if (up && right) return 4500;
         if (right && down) return 13500;
         if (down && left) return 22500;
@@ -134,7 +134,7 @@ public enum WheelButtons : uint
     Button15 = 1u << 14,
     Button16 = 1u << 15,
 
-    // Reservado: até 32 botões aqui, vJoy suporta bem mais.
+    // Reserved: define up to 32 buttons here (vJoy supports many more).
 }
 
 internal static class WheelButtonMapper
@@ -164,7 +164,7 @@ internal static class WheelButtonMapper
         if (buttons.HasFlag(GamepadButtons.LeftThumb)) result |= WheelButtons.Button9;
         if (buttons.HasFlag(GamepadButtons.RightThumb)) result |= WheelButtons.Button10;
 
-        // D-Pad (também é enviado como POV em VirtualWheelState)
+        // D-Pad (also sent as POV in VirtualWheelState)
         if (buttons.HasFlag(GamepadButtons.DPadUp)) result |= WheelButtons.Button11;
         if (buttons.HasFlag(GamepadButtons.DPadRight)) result |= WheelButtons.Button12;
         if (buttons.HasFlag(GamepadButtons.DPadDown)) result |= WheelButtons.Button13;

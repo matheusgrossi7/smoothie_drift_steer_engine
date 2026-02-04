@@ -8,10 +8,10 @@ using Vortice.XInput;
 namespace DriftCore.Services.Input;
 
 /// <summary>
-/// Driver WinUSB (WinUSBNet) para o Xbox 360 Wireless Receiver (VID:045E PID:0719).
-/// 
-/// Este receiver multiplexa input, bateria/status, conexão/handshake e áudio no mesmo pipe.
-/// A estratégia aqui é filtrar agressivamente pacotes e só aceitar reports de input.
+/// WinUSB (WinUSBNet) driver for the Xbox 360 Wireless Receiver (VID:045E PID:0719).
+///
+/// This receiver multiplexes input, battery/status, connection/handshake, and audio traffic over the same pipe.
+/// The strategy here is to aggressively filter packets and only accept input reports.
 /// </summary>
 public sealed class XboxWirelessUsbDriver : IDisposable
 {
@@ -326,7 +326,7 @@ public sealed class XboxWirelessUsbDriver : IDisposable
             {
                 TryOpenDevice();
 
-                // Backoff curto para não busy-loop em máquina sem driver/dispositivo.
+                // Short backoff to avoid a busy loop on machines without the driver/device.
                 if (_inPipe == null)
                     Sleep(token, 250);
 
@@ -343,8 +343,8 @@ public sealed class XboxWirelessUsbDriver : IDisposable
             }
             catch (Exception ex)
             {
-                // Importante: com PipeTransferTimeout configurado, "sem dados ainda" pode vir como timeout.
-                // Timeout não é desconexão e não deve causar CloseDevice, senão o estado fica piscando.
+                // Important: with PipeTransferTimeout configured, "no data yet" can surface as a timeout.
+                // Timeout is not a disconnect and must not cause CloseDevice, otherwise state will flicker.
                 if (IsTimeout(ex))
                 {
                     Interlocked.Increment(ref _statTimeouts);
@@ -370,8 +370,8 @@ public sealed class XboxWirelessUsbDriver : IDisposable
             Volatile.Write(ref _statLastIf, _iface?.Number ?? -1);
             Volatile.Write(ref _statLastInAddr, _inPipe?.Address ?? -1);
 
-            // Anti-flicker #1: aceite apenas o tamanho de report de input que conhecemos (29 bytes).
-            // Isso descarta a maior parte de voz/status/handshake sem nem tentar parse.
+            // Anti-flicker #1: accept only the input report length we know (29 bytes).
+            // This discards most voice/status/handshake traffic without even attempting to parse.
             if (bytesRead != WirelessInputReportLength)
             {
                 Interlocked.Increment(ref _statFiltered);
@@ -388,7 +388,7 @@ public sealed class XboxWirelessUsbDriver : IDisposable
                 Console.Error.WriteLine($"[USB] input-report len={bytesRead} hex={Convert.ToHexString(_buffer.AsSpan(0, bytesRead))}");
             }
 
-            // Parse (sem alocação, bitwise, little-endian).
+            // Parse (no allocations, bitwise, little-endian).
             if (!TryParseAndDebounce(_buffer, bytesRead, out var gamepad, out var steering, out var usedOffset))
             {
                 Interlocked.Increment(ref _statFiltered);
@@ -461,7 +461,7 @@ public sealed class XboxWirelessUsbDriver : IDisposable
 
             _device = new USBDevice(match);
 
-            // Heurística: preferir interface VendorSpecific com IN pipe.
+            // Heuristic: prefer a VendorSpecific interface with an IN pipe.
             _iface = FindBestInterface(_device);
             if (_iface == null)
             {
@@ -489,14 +489,14 @@ public sealed class XboxWirelessUsbDriver : IDisposable
                 _readSize = Math.Min(_buffer.Length, 32);
             }
 
-            // Timeout (ms) – evita bloqueio permanente do loop.
+            // Timeout (ms) - avoids permanently blocking the loop.
             try
             {
                 _inPipe.Policy.PipeTransferTimeout = _readTimeoutMs;
             }
             catch
             {
-                // Algumas stacks/drivers podem não suportar policy. Mantém sem timeout.
+                // Some stacks/drivers may not support this policy. Keep running without timeout.
             }
 
             try
@@ -524,13 +524,13 @@ public sealed class XboxWirelessUsbDriver : IDisposable
 
     private static USBInterface? FindBestInterface(USBDevice device)
     {
-        // Receiver é um dispositivo composto (ex.: IA_01 / IA_02) e pode expor interfaces de áudio/headset.
-        // A interface de INPUT é a #0. Priorizar ela explicitamente é a forma mais segura de evitar flicker.
+        // The receiver is a composite device (e.g. IA_01 / IA_02) and can expose audio/headset interfaces.
+        // The INPUT interface is #0. Prioritizing it explicitly is the safest way to avoid flicker.
 
         USBInterface? iface0 = null;
         try
         {
-            // Em WinUSBNet, o indexador usa o "interface number".
+            // In WinUSBNet, the indexer uses the "interface number".
             iface0 = device.Interfaces[0];
         }
         catch
@@ -543,14 +543,14 @@ public sealed class XboxWirelessUsbDriver : IDisposable
             USBPipe? inPipe0 = null;
             try { inPipe0 = iface0.InPipe; } catch { inPipe0 = null; }
 
-            // Interface #0 é preferida, mas tentamos achar uma interface que realmente devolva bytes.
+            // Interface #0 is preferred, but we try to find an interface that actually returns bytes.
             if (inPipe0 != null)
             {
                 var probe0 = ProbePipe(inPipe0);
                 if (probe0 == PipeProbeResult.HasData)
                     return iface0;
 
-                // Timeout = "sem dados ainda"; mantém como fallback caso nenhuma interface entregue bytes.
+                // Timeout = "no data yet"; keep as a fallback if no interface provides bytes.
                 if (probe0 == PipeProbeResult.Timeout)
                 {
                     // Continue searching other interfaces for actual traffic.
@@ -558,7 +558,7 @@ public sealed class XboxWirelessUsbDriver : IDisposable
             }
         }
 
-        // Fallback: menor risco possível.
+        // Fallback: lowest-risk option.
         // Ignora explicitamente Audio e qualquer interface sem InPipe.
         USBInterface? firstNonAudioWithInPipe = null;
         USBInterface? firstTimeoutWithInPipe = iface0 != null && iface0.BaseClass != USBBaseClass.Audio ? iface0 : null;
@@ -582,7 +582,7 @@ public sealed class XboxWirelessUsbDriver : IDisposable
             if (probe == PipeProbeResult.Timeout && firstTimeoutWithInPipe == null)
                 firstTimeoutWithInPipe = iface;
 
-            // Se encontrarmos a própria interface #0 por enumeração, também serve.
+            // If we find interface #0 via enumeration, that's also acceptable.
             if (iface.Number == 0)
                 return iface;
         }
