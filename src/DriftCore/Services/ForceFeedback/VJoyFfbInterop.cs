@@ -200,27 +200,27 @@ internal static class VJoyFfbInterop
             switch (type)
             {
                 case FFBPType.PT_CONSTREP:
-                {
-                    var constantEffect = default(FFB_EFF_CONSTANT);
-                    if (Ffb_h_Eff_Constant(ffbDataPtr, ref constantEffect) != 0)
-                        return false;
+                    {
+                        var constantEffect = default(FFB_EFF_CONSTANT);
+                        if (Ffb_h_Eff_Constant(ffbDataPtr, ref constantEffect) != 0)
+                            return false;
 
-                    normalized = NormalizeMagnitudeWithSign(constantEffect.Magnitude, dirSign);
-                    kind = directionKind is null ? "Constant" : $"Constant/{directionKind}";
-                    return true;
-                }
+                        normalized = NormalizeMagnitudeWithSign(constantEffect.Magnitude, dirSign);
+                        kind = directionKind is null ? "Constant" : $"Constant/{directionKind}";
+                        return true;
+                    }
 
                 case FFBPType.PT_RAMPREP:
-                {
-                    var ramp = default(FFB_EFF_RAMP);
-                    if (Ffb_h_Eff_Ramp(ffbDataPtr, ref ramp) != 0)
-                        return false;
+                    {
+                        var ramp = default(FFB_EFF_RAMP);
+                        if (Ffb_h_Eff_Ramp(ffbDataPtr, ref ramp) != 0)
+                            return false;
 
-                    var value = ramp.End != 0 ? ramp.End : ramp.Start;
-                    normalized = NormalizeMagnitudeWithSign(value, dirSign);
-                    kind = directionKind is null ? "Ramp" : $"Ramp/{directionKind}";
-                    return true;
-                }
+                        var value = ramp.End != 0 ? ramp.End : ramp.Start;
+                        normalized = NormalizeMagnitudeWithSign(value, dirSign);
+                        kind = directionKind is null ? "Ramp" : $"Ramp/{directionKind}";
+                        return true;
+                    }
                 default:
                     kind = type.ToString();
                     break;
