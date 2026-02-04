@@ -23,6 +23,10 @@ public sealed class DriftEngine
     private VirtualWheelManager? _virtualWheel;
     private uint _activeVJoyDeviceId;
 
+    private XboxWirelessUsbDriver? _usbDriver;
+    private string _activeUsbGuid = string.Empty;
+    private int _activeUsbTimeoutMs;
+
     public DriftEngine(EngineOptions options, Action stopApplication)
     {
         _shutdown = new ShutdownManager(stopApplication, () => EngineDefaults.ShutdownTimeout);
@@ -84,7 +88,7 @@ public sealed class DriftEngine
     private void ProcessFrame()
     {
         var config = Volatile.Read(ref _config);
-        var input = GamepadReader.Read(config.InputDeviceIndex);
+        var input = ReadInput(config);
 
         if (!input.IsConnected)
         {
@@ -97,6 +101,42 @@ public sealed class DriftEngine
         var state = VirtualWheelState.FromGamepad(input.Gamepad, processed, config.UseLbAsClutch);
 
         _virtualWheel?.SendState(state);
+    }
+
+    private GamepadReadResult ReadInput(EngineOptions config)
+    {
+        if (config.UseWinUsbReceiver)
+        {
+            EnsureUsbDriver(config);
+
+            if (_usbDriver != null && _usbDriver.TryGetLatest(out var usbResult))
+                return usbResult;
+
+            return GamepadReadResult.Disconnected;
+        }
+
+        return GamepadReader.Read(config.InputDeviceIndex);
+    }
+
+    private void EnsureUsbDriver(EngineOptions config)
+    {
+        var guid = config.WinUsbDeviceInterfaceGuid ?? string.Empty;
+        var timeout = Math.Max(0, config.WinUsbReadTimeoutMs);
+
+        // Recria driver se GUID/timeout mudarem.
+        if (_usbDriver != null && string.Equals(_activeUsbGuid, guid, StringComparison.Ordinal) && _activeUsbTimeoutMs == timeout)
+            return;
+
+        _usbDriver?.Dispose();
+        _usbDriver = null;
+
+        _activeUsbGuid = guid;
+        _activeUsbTimeoutMs = timeout;
+
+        // GUID may be empty: the driver will fall back to the generic USB device interface GUID
+        // and filter by VID/PID.
+        _usbDriver = new XboxWirelessUsbDriver(guid, timeout);
+        _usbDriver.Start();
     }
 
     private void TryConnectDriver()
@@ -125,6 +165,9 @@ public sealed class DriftEngine
     {
         _virtualWheel?.Dispose();
         _virtualWheel = null;
+
+        _usbDriver?.Dispose();
+        _usbDriver = null;
     }
 
     #endregion
@@ -155,10 +198,19 @@ public sealed class DriftEngine
 
         _debugCounter = 0;
         var config = Volatile.Read(ref _config);
-        var input = GamepadReader.Read(config.InputDeviceIndex);
+        var input = ReadInput(config);
         double processed = _inputProcessor.ProcessSteering(input.Steering);
 
-        Console.WriteLine($"[IO] Gamepad{config.InputDeviceIndex} | Connected: {input.IsConnected} | Raw: {input.Steering:F3} | Processed: {processed:F3} | vJoy: {_virtualWheel?.IsConnected == true}");
+        var src = config.UseWinUsbReceiver ? "WinUSB" : $"XInput{config.InputDeviceIndex}";
+        if (config.UseWinUsbReceiver && _usbDriver != null)
+        {
+            var s = _usbDriver.GetStats();
+            Console.WriteLine($"[IO] {src} | Connected: {input.IsConnected} | Raw: {input.Steering:F3} | Processed: {processed:F3} | vJoy: {_virtualWheel?.IsConnected == true} | usb: reads={s.Reads} parsed={s.Parsed} filtered={s.Filtered} to={s.Timeouts} err={s.Errors} last={s.LastBytes} b1={s.LastB1:X2} if={s.LastInterfaceNumber} ep=0x{s.LastInPipeAddress:X2} off={s.PayloadOffset} btn=0x{s.LastButtons:X4} lt={s.LastLeftTrigger} rt={s.LastRightTrigger} lx={s.LastLeftThumbX} ly={s.LastLeftThumbY}");
+        }
+        else
+        {
+            Console.WriteLine($"[IO] {src} | Connected: {input.IsConnected} | Raw: {input.Steering:F3} | Processed: {processed:F3} | vJoy: {_virtualWheel?.IsConnected == true}");
+        }
     }
 
     private void ApplyConfig(EngineOptions config)
@@ -185,7 +237,11 @@ public sealed class DriftEngine
             UseLbAsClutch = input.UseLbAsClutch,
 
             SmoothingEnabled = input.SmoothingEnabled,
-            SmoothingValue = Math.Clamp(input.SmoothingValue, 0, 100)
+            SmoothingValue = Math.Clamp(input.SmoothingValue, 0, 100),
+
+            UseWinUsbReceiver = input.UseWinUsbReceiver,
+            WinUsbDeviceInterfaceGuid = input.WinUsbDeviceInterfaceGuid ?? string.Empty,
+            WinUsbReadTimeoutMs = Math.Max(0, input.WinUsbReadTimeoutMs)
         };
     }
 

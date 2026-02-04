@@ -31,4 +31,22 @@ public sealed class EngineOptions
     /// </summary>
     public int SmoothingValue { get; set; } = 50;
 
+    /// <summary>
+    /// Se true, usa o receiver Xbox 360 Wireless via WinUSB (WinUSBNet) ao invés de XInput.
+    /// Requer que o dispositivo esteja com driver WinUSB e um Device Interface GUID configurado.
+    /// </summary>
+    public bool UseWinUsbReceiver { get; set; } = false;
+
+    /// <summary>
+    /// Device Interface GUID (definido no .inf do WinUSB) para enumerar o receiver.
+    /// Ex: "{BB9176E8-924F-4A7E-963A-6DC6A4E87FC2}".
+    /// Se vazio, a engine cai para o GUID genérico de dispositivos USB e filtra por VID/PID.
+    /// </summary>
+    public string WinUsbDeviceInterfaceGuid { get; set; } = "";
+
+    /// <summary>
+    /// Timeout de leitura do pipe (ms). 0 = sem timeout.
+    /// </summary>
+    public int WinUsbReadTimeoutMs { get; set; } = 20;
+
 }
