@@ -53,27 +53,42 @@ public sealed class InputProcessor
 
     public double ProcessSteering(double input)
     {
-        input = Math.Clamp(input, -1.0, 1.0);
+        input = ApplyDeadzoneAndRemap(Math.Clamp(input, -1.0, 1.0));
 
-        // Deadzone to avoid drift around zero.
+        if (!TryGetDeltaSeconds(out var dtSeconds))
+        {
+            return _steeringPosition;
+        }
+
+        UpdateDriverTorque(input, dtSeconds);
+        IntegrateSteering(dtSeconds);
+        ApplyBumpStops();
+
+        return _steeringPosition;
+    }
+
+    private double ApplyDeadzoneAndRemap(double input)
+    {
         var absInput = Math.Abs(input);
         if (absInput <= _deadzone)
         {
-            input = 0.0;
-        }
-        else
-        {
-            // Remap to keep a linear response outside the deadzone.
-            var scaled = (absInput - _deadzone) / (1.0 - _deadzone);
-            input = Math.Sign(input) * Math.Clamp(scaled, 0.0, 1.0);
+            return 0.0;
         }
 
+        var scaled = (absInput - _deadzone) / (1.0 - _deadzone);
+        return Math.Sign(input) * Math.Clamp(scaled, 0.0, 1.0);
+    }
+
+    private bool TryGetDeltaSeconds(out double dtSeconds)
+    {
         var now = Stopwatch.GetTimestamp();
         var last = Volatile.Read(ref _lastTimestamp);
+
         if (last == 0)
         {
             Volatile.Write(ref _lastTimestamp, now);
-            return _steeringPosition;
+            dtSeconds = 0;
+            return false;
         }
 
         Volatile.Write(ref _lastTimestamp, now);
@@ -81,56 +96,56 @@ public sealed class InputProcessor
         var deltaTicks = now - last;
         if (deltaTicks <= 0)
         {
-            return _steeringPosition;
+            dtSeconds = 0;
+            return false;
         }
 
-        var dtSeconds = deltaTicks / (double)Stopwatch.Frequency;
-
-        // Avoid huge integration steps after stalls/breakpoints.
+        dtSeconds = deltaTicks / (double)Stopwatch.Frequency;
         if (dtSeconds > _maxDtSeconds) dtSeconds = _maxDtSeconds;
+        return true;
+    }
 
-        // Driver torque target: stick input after deadzone/remap.
+    private void UpdateDriverTorque(double input, double dtSeconds)
+    {
         var desiredDriverTorque = input * _driverTorqueGain;
-
-        // Smoothing controls how fast the driver can apply torque (torque slew-rate limiter).
-        if (Volatile.Read(ref _smoothingEnabled))
-        {
-            var smoothingValue = Volatile.Read(ref _smoothingValue); // 0..100
-            var t = smoothingValue / 100.0;
-
-            // 0 => instant. 100 => slow ramp.
-            // Units: torque-units per second.
-            var maxTorqueRate = Lerp(250.0, 8.0, t);
-            _driverTorque = MoveTowards(_driverTorque, desiredDriverTorque, maxTorqueRate * dtSeconds);
-        }
-        else
+        if (!Volatile.Read(ref _smoothingEnabled))
         {
             _driverTorque = desiredDriverTorque;
+            return;
         }
 
+        var smoothingValue = Volatile.Read(ref _smoothingValue); // 0..100
+        var t = smoothingValue / 100.0;
+        var maxTorqueRate = Lerp(250.0, 8.0, t);
+        _driverTorque = MoveTowards(_driverTorque, desiredDriverTorque, maxTorqueRate * dtSeconds);
+    }
+
+    private void IntegrateSteering(double dtSeconds)
+    {
         var feedbackTorque = Volatile.Read(ref _feedbackForce) * _feedbackTorqueGain;
 
-        // Core dynamics: a = (sumTorque - damping * v) / inertia
         var inertia = Math.Max(1e-6, _inertia);
         var damping = Math.Max(0.0, _damping);
         var acceleration = (_driverTorque + feedbackTorque - (_velocity * damping)) / inertia;
 
         _velocity += acceleration * dtSeconds;
         _steeringPosition += _velocity * dtSeconds;
+    }
 
-        // Bump stops: clamp and absorb velocity pushing into the stop.
+    private void ApplyBumpStops()
+    {
         if (_steeringPosition > 1.0)
         {
             _steeringPosition = 1.0;
             if (_velocity > 0.0) _velocity = 0.0;
+            return;
         }
-        else if (_steeringPosition < -1.0)
+
+        if (_steeringPosition < -1.0)
         {
             _steeringPosition = -1.0;
             if (_velocity < 0.0) _velocity = 0.0;
         }
-
-        return _steeringPosition;
     }
 
     private static double Lerp(double a, double b, double t) => a + ((b - a) * Math.Clamp(t, 0.0, 1.0));
