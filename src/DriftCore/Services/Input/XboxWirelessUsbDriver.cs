@@ -265,7 +265,7 @@ public sealed class XboxWirelessUsbDriver : IDisposable
     public bool TryGetLatest(out GamepadReadResult result)
     {
         // IMPORTANT: For WinUSB, reads can legitimately time out when no new packets arrive.
-        // That must NOT be treated as a disconnect, otherwise the engine flickers and resets vJoy.
+        // That must NOT be treated as a disconnect, otherwise the engine flickers and resets the virtual controller.
         // We consider the device connected as long as we have an open pipe.
         if (!_isConnected)
         {

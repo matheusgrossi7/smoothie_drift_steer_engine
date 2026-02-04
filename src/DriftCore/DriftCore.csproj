@@ -10,6 +10,7 @@
 
   <ItemGroup>
     <PackageReference Include="Vortice.XInput" Version="3.8.2" />
+    <PackageReference Include="Nefarius.ViGEm.Client" Version="1.21.256" />
     <PackageReference Include="WinUSBNet" Version="2.1.0" />
   </ItemGroup>
 

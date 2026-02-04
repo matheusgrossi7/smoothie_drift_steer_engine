@@ -1,97 +1,116 @@
-using System.Reflection;
-using System.Runtime.InteropServices;
+using Nefarius.ViGEm.Client;
+using Nefarius.ViGEm.Client.Targets;
+using Nefarius.ViGEm.Client.Targets.DualShock4;
 
 namespace DriftCore.Services.VirtualWheel;
 
 /// <summary>
-/// Manages a virtual wheel via vJoy (DirectInput).
+/// Manages a virtual DualShock 4 controller via ViGEmBus.
 /// </summary>
 public sealed class VirtualWheelManager : IDisposable
 {
     private bool _disposed;
-    private readonly uint _deviceId;
-    private bool _acquired;
+    private ViGEmClient? _client;
+    private IDualShock4Controller? _controller;
+    private bool _connected;
 
-    public bool IsConnected => _acquired && !_disposed;
-
-    public VirtualWheelManager(uint deviceId = 1)
-    {
-        _deviceId = deviceId;
-    }
+    public bool IsConnected => _connected && !_disposed;
 
     public bool Initialize()
     {
         try
         {
-            Console.WriteLine($"[VirtualWheel] Initializing vJoy (DeviceId={_deviceId})...");
+            _client ??= new ViGEmClient();
 
-            if (!VJoyNative.vJoyEnabled())
+            if (_controller == null)
             {
-                Console.WriteLine("[ERROR] vJoy is not enabled. Install/enable the vJoy driver.");
-                return false;
+                _controller = _client.CreateDualShock4Controller();
+                _controller.AutoSubmitReport = false;
             }
 
-            var status = VJoyNative.GetVJDStatus(_deviceId);
-            if (status is VjdStat.VJD_STAT_MISS)
+            if (!_connected)
             {
-                Console.WriteLine("[ERROR] vJoy device not found (VJD_STAT_MISS). Configure a device in vJoyConf.");
-                return false;
+                Console.WriteLine("[VirtualWheel] Connecting ViGEm DS4...");
+                _controller.Connect();
+                _connected = true;
             }
 
-            if (status is VjdStat.VJD_STAT_BUSY)
-            {
-                Console.WriteLine("[ERROR] vJoy device is busy (VJD_STAT_BUSY).");
-                return false;
-            }
-
-            if (!VJoyNative.AcquireVJD(_deviceId))
-            {
-                Console.WriteLine("[ERROR] Failed to acquire vJoy device.");
-                return false;
-            }
-
-            _acquired = true;
-            VJoyNative.ResetVJD(_deviceId);
-            Console.WriteLine("[VirtualWheel] Connected!");
+            Console.WriteLine("[VirtualWheel] Connected (DS4).");
             return true;
-        }
-        catch (DllNotFoundException)
-        {
-            Console.WriteLine("[ERROR] vJoyInterface.dll not found. Verify vJoy installation and x64 architecture.");
-            return false;
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"[ERROR] vJoy failure: {ex.Message}");
+            Console.WriteLine($"[ERROR] ViGEm failure: {ex.Message}");
             return false;
         }
     }
 
     public void SendState(VirtualWheelState state)
     {
-        if (!_acquired || _disposed) return;
+        if (_disposed || !_connected || _controller == null) return;
 
         // Axes
-        VJoyNative.SetAxis(state.SteeringX, _deviceId, HidUsage.HID_USAGE_X);
-        VJoyNative.SetAxis(state.BrakeY, _deviceId, HidUsage.HID_USAGE_Y);
-        VJoyNative.SetAxis(state.ThrottleZ, _deviceId, HidUsage.HID_USAGE_Z);
-        VJoyNative.SetAxis(state.Rx, _deviceId, HidUsage.HID_USAGE_RX);
+        _controller.SetAxisValue(DualShock4Axis.LeftThumbX, AxisToByte(state.SteeringX));
+        _controller.SetAxisValue(DualShock4Axis.LeftThumbY, 128);
 
-        // Continuous POV (1)
-        VJoyNative.SetContPov(state.Pov1, _deviceId, 1);
+        _controller.SetAxisValue(DualShock4Axis.RightThumbX, AxisToByte(state.Rx));
+        _controller.SetAxisValue(DualShock4Axis.RightThumbY, 128);
 
-        // Buttons (1..32)
-        SetButtons(state.Buttons);
+        // Triggers (independent axes)
+        _controller.SetSliderValue(DualShock4Slider.LeftTrigger, AxisToByte(state.BrakeY));
+        _controller.SetSliderValue(DualShock4Slider.RightTrigger, AxisToByte(state.ThrottleZ));
+
+        // D-Pad
+        _controller.SetDPadDirection(MapDpad(state.Pov1));
+
+        // Buttons
+        ApplyButtons(state.Buttons);
+
+        _controller.SubmitReport();
     }
 
-    private void SetButtons(WheelButtons buttons)
+    private void ApplyButtons(WheelButtons buttons)
     {
-        uint mask = (uint)buttons;
-        for (uint i = 0; i < 32; i++)
+        _controller?.SetButtonState(DualShock4Button.Cross, buttons.HasFlag(WheelButtons.Button1));
+        _controller?.SetButtonState(DualShock4Button.Circle, buttons.HasFlag(WheelButtons.Button2));
+        _controller?.SetButtonState(DualShock4Button.Square, buttons.HasFlag(WheelButtons.Button3));
+        _controller?.SetButtonState(DualShock4Button.Triangle, buttons.HasFlag(WheelButtons.Button4));
+
+        _controller?.SetButtonState(DualShock4Button.ShoulderLeft, buttons.HasFlag(WheelButtons.Button5));
+        _controller?.SetButtonState(DualShock4Button.ShoulderRight, buttons.HasFlag(WheelButtons.Button6));
+
+        _controller?.SetButtonState(DualShock4Button.Share, buttons.HasFlag(WheelButtons.Button7));
+        _controller?.SetButtonState(DualShock4Button.Options, buttons.HasFlag(WheelButtons.Button8));
+
+        _controller?.SetButtonState(DualShock4Button.ThumbLeft, buttons.HasFlag(WheelButtons.Button9));
+        _controller?.SetButtonState(DualShock4Button.ThumbRight, buttons.HasFlag(WheelButtons.Button10));
+    }
+
+    private static DualShock4DPadDirection MapDpad(int pov)
+    {
+        if (pov < 0) return DualShock4DPadDirection.None;
+
+        var angle = pov / 100.0;
+        var sector = ((int)Math.Round(angle / 45.0)) % 8;
+
+        return sector switch
         {
-            bool pressed = (mask & (1u << (int)i)) != 0;
-            VJoyNative.SetBtn(pressed, _deviceId, (byte)(i + 1));
-        }
+            0 => DualShock4DPadDirection.North,
+            1 => DualShock4DPadDirection.Northeast,
+            2 => DualShock4DPadDirection.East,
+            3 => DualShock4DPadDirection.Southeast,
+            4 => DualShock4DPadDirection.South,
+            5 => DualShock4DPadDirection.Southwest,
+            6 => DualShock4DPadDirection.West,
+            7 => DualShock4DPadDirection.Northwest,
+            _ => DualShock4DPadDirection.None
+        };
+    }
+
+    private static byte AxisToByte(int axis)
+    {
+        var clamped = Math.Clamp(axis, 0, 32768);
+        return (byte)Math.Clamp((int)Math.Round(clamped * (255.0 / 32768.0)), 0, 255);
     }
 
     public void Dispose()
@@ -103,12 +122,18 @@ public sealed class VirtualWheelManager : IDisposable
 
         try
         {
-            if (_acquired)
+            if (_controller != null)
             {
-                VJoyNative.ResetVJD(_deviceId);
-                VJoyNative.RelinquishVJD(_deviceId);
-                _acquired = false;
+                if (_connected)
+                    _controller.Disconnect();
+
+                _controller.Dispose();
+                _controller = null;
+                _connected = false;
             }
+
+            _client?.Dispose();
+            _client = null;
         }
         catch (Exception ex)
         {
@@ -117,89 +142,4 @@ public sealed class VirtualWheelManager : IDisposable
 
         Console.WriteLine("[VirtualWheel] Disconnected.");
     }
-}
-
-internal enum VjdStat : int
-{
-    VJD_STAT_OWN = 0,
-    VJD_STAT_FREE = 1,
-    VJD_STAT_BUSY = 2,
-    VJD_STAT_MISS = 3,
-    VJD_STAT_UNKN = 4,
-}
-
-internal static class HidUsage
-{
-    // HID usage IDs (Generic Desktop)
-    public const uint HID_USAGE_X = 0x30;
-    public const uint HID_USAGE_Y = 0x31;
-    public const uint HID_USAGE_Z = 0x32;
-    public const uint HID_USAGE_RX = 0x33;
-}
-
-internal static class VJoyNative
-{
-    private const string DllName = "vJoyInterface.dll";
-
-    static VJoyNative()
-    {
-        NativeLibrary.SetDllImportResolver(typeof(VJoyNative).Assembly, Resolve);
-    }
-
-    private static IntPtr Resolve(string libraryName, Assembly assembly, DllImportSearchPath? searchPath)
-    {
-        if (!string.Equals(libraryName, DllName, StringComparison.OrdinalIgnoreCase))
-            return IntPtr.Zero;
-
-        // 1) Local (next to executable)
-        var local = Path.Combine(AppContext.BaseDirectory, DllName);
-        if (File.Exists(local))
-            return NativeLibrary.Load(local);
-
-        // 2) Common vJoy install locations
-        var programFiles = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFiles);
-        var programFilesX86 = Environment.GetFolderPath(Environment.SpecialFolder.ProgramFilesX86);
-
-        var candidates = new[]
-        {
-            Path.Combine(programFiles, "vJoy", "x64", DllName),
-            Path.Combine(programFilesX86, "vJoy", "x64", DllName),
-            Path.Combine(programFiles, "vJoy", DllName),
-            Path.Combine(programFilesX86, "vJoy", DllName),
-        };
-
-        foreach (var path in candidates)
-        {
-            if (File.Exists(path))
-                return NativeLibrary.Load(path);
-        }
-
-        return IntPtr.Zero;
-    }
-
-    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    public static extern bool vJoyEnabled();
-
-    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    public static extern bool AcquireVJD(uint rID);
-
-    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    public static extern void RelinquishVJD(uint rID);
-
-    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    public static extern bool ResetVJD(uint rID);
-
-    [DllImport(DllName, EntryPoint = "GetVJDStatus", CallingConvention = CallingConvention.Cdecl)]
-    private static extern int GetVJDStatusRaw(uint rID);
-
-    public static VjdStat GetVJDStatus(uint rID) => (VjdStat)GetVJDStatusRaw(rID);
-
-    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    public static extern bool SetAxis(int value, uint rID, uint axis);
-
-    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    public static extern bool SetBtn(bool value, uint rID, byte nBtn);
-
-    [DllImport(DllName, CallingConvention = CallingConvention.Cdecl)]
-    public static extern bool SetContPov(int value, uint rID, byte nPov);
 }

@@ -3,10 +3,10 @@ using Vortice.XInput;
 namespace DriftCore.Services.VirtualWheel;
 
 /// <summary>
-/// Immutable virtual wheel state (vJoy) to be sent to the game.
+/// Immutable virtual wheel state to be sent to the virtual controller.
 /// </summary>
 /// <remarks>
-/// vJoy axes typically use the 0..32768 range.
+/// Internal axes use the 0..32768 range.
 /// Steering uses X (0=left, 16384=center, 32768=right).
 /// </remarks>
 public readonly struct VirtualWheelState
@@ -42,7 +42,7 @@ public readonly struct VirtualWheelState
         var brakeY = AxisFromUnsignedByte(gamepad.LeftTrigger);
         var throttleZ = AxisFromUnsignedByte(gamepad.RightTrigger);
 
-        // vJoy Rx: maps to the right stick X axis (horizontal), with deadzone.
+        // Rx: maps to the right stick X axis (horizontal), with deadzone.
         const double rxDeadzone = 0.4;
         var rx = AxisFromSignedShortWithDeadzone(gamepad.RightThumbX, rxDeadzone);
 
@@ -102,7 +102,7 @@ public readonly struct VirtualWheelState
 
         if (!up && !down && !left && !right) return -1;
 
-        // vJoy continuous POV: 0=up, 9000=right, 18000=down, 27000=left
+        // Continuous POV: 0=up, 9000=right, 18000=down, 27000=left
         if (up && right) return 4500;
         if (right && down) return 13500;
         if (down && left) return 22500;
@@ -137,7 +137,7 @@ public enum WheelButtons : uint
     Button15 = 1u << 14,
     Button16 = 1u << 15,
 
-    // Reserved: define up to 32 buttons here (vJoy supports many more).
+    // Reserved: define up to 32 buttons here.
 }
 
 internal static class WheelButtonMapper
@@ -148,7 +148,7 @@ internal static class WheelButtonMapper
 
         var buttons = gamepad.Buttons;
 
-        // 1:1 (controle -> vJoy buttons)
+        // 1:1 (controle -> virtual buttons)
         // ABXY
         if (buttons.HasFlag(GamepadButtons.A)) result |= WheelButtons.Button1;
         if (buttons.HasFlag(GamepadButtons.B)) result |= WheelButtons.Button2;

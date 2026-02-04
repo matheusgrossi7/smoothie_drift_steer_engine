@@ -12,11 +12,6 @@ public sealed class EngineOptions
     public int InputDeviceIndex { get; set; } = 0;
 
     /// <summary>
-    /// vJoy device ID (1-16).
-    /// </summary>
-    public int VJoyDeviceId { get; set; } = 1;
-
-    /// <summary>
     /// Enables input smoothing.
     /// </summary>
     public bool SmoothingEnabled { get; set; } = true;

@@ -28,11 +28,11 @@ public static class EngineDefaults
     /// </summary>
     public static readonly TimeSpan StopAsyncTimeout = TimeSpan.FromSeconds(5);
     /// <summary>
-    /// Interval between vJoy reconnection attempts.
+    /// Interval between virtual controller reconnection attempts.
     /// </summary>
     public static readonly TimeSpan DriverRetryInterval = TimeSpan.FromSeconds(5);
     /// <summary>
-    /// Delay applied when vJoy is disconnected to avoid a busy loop.
+    /// Delay applied when the virtual controller is disconnected to avoid a busy loop.
     /// </summary>
     public static readonly TimeSpan DisconnectedDelay = TimeSpan.FromMilliseconds(200);
     /// <summary>

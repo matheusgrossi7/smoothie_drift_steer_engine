@@ -21,7 +21,6 @@ public sealed class DriftEngine
     private EngineOptions _config = new();
     private bool _testMode;
     private VirtualWheelManager? _virtualWheel;
-    private uint _activeVJoyDeviceId;
 
     private XboxWirelessUsbDriver? _usbDriver;
     private string _activeUsbGuid = string.Empty;
@@ -150,14 +149,10 @@ public sealed class DriftEngine
         if (!_driverRetryTimer.TryElapse()) return;
         if (_shutdown.IsShuttingDown) return;
 
-        var config = Volatile.Read(ref _config);
-        var desiredDeviceId = (uint)Math.Clamp(config.VJoyDeviceId, 1, 16);
-
-        if (_virtualWheel == null || _activeVJoyDeviceId != desiredDeviceId)
+        if (_virtualWheel == null)
         {
             _virtualWheel?.Dispose();
-            _virtualWheel = new VirtualWheelManager(desiredDeviceId);
-            _activeVJoyDeviceId = desiredDeviceId;
+            _virtualWheel = new VirtualWheelManager();
         }
 
         _virtualWheel.Initialize();
@@ -225,7 +220,7 @@ public sealed class DriftEngine
 
         if (_testMode)
         {
-            Console.WriteLine($"[Config] Input={normalized.InputDeviceIndex} vJoy={normalized.VJoyDeviceId} Smooth={(normalized.SmoothingEnabled ? normalized.SmoothingValue : 0)}");
+            Console.WriteLine($"[Config] Input={normalized.InputDeviceIndex} Smooth={(normalized.SmoothingEnabled ? normalized.SmoothingValue : 0)}");
         }
     }
 
@@ -234,7 +229,6 @@ public sealed class DriftEngine
         return new EngineOptions
         {
             InputDeviceIndex = Math.Clamp(input.InputDeviceIndex, 0, 3),
-            VJoyDeviceId = Math.Clamp(input.VJoyDeviceId, 1, 16),
 
             SmoothingEnabled = input.SmoothingEnabled,
             SmoothingValue = Math.Clamp(input.SmoothingValue, 0, 100),
