@@ -45,6 +45,7 @@ public sealed class XboxWirelessUsbDriver : IDisposable
     private readonly int _ledPlayerIndex;
     private bool _ledSent;
     private long _ledLastAttemptTicks;
+    private readonly byte _ledDisconnectCommand;
 
     private readonly bool _dumpEnabled;
     private int _dumpRemaining;
@@ -205,10 +206,14 @@ public sealed class XboxWirelessUsbDriver : IDisposable
         // LED: When using WinUSB instead of the stock XUSB/XInput stack, the controller ring
         // may keep blinking. Default to forcing Player 1 (solid) unless explicitly disabled.
         // Set DRIFT_USB_LED_PLAYER=0 to disable, or 1..4 to choose the player index.
+        // When stopping the engine / disconnecting, we try to restore a blinking pattern.
+        // Set DRIFT_USB_LED_DISCONNECT=0 to turn LED off on shutdown, or 10/11/12/15 for blink patterns.
         var ledEnv = ParseOptionalIntEnv("DRIFT_USB_LED_PLAYER");
         _ledPlayerIndex = ledEnv == 0 ? 0 : Math.Clamp(ledEnv > 0 ? ledEnv : 1, 1, 4);
         _ledSent = false;
         _ledLastAttemptTicks = 0;
+        var ledDisc = ParseOptionalIntEnv("DRIFT_USB_LED_DISCONNECT");
+        _ledDisconnectCommand = (byte)Math.Clamp(ledDisc >= 0 ? ledDisc : 10, 0, 15); // 10=rotate
 
         _dumpEnabled = string.Equals(Environment.GetEnvironmentVariable("DRIFT_USB_DUMP"), "1", StringComparison.OrdinalIgnoreCase);
         var dumpCount = ParseOptionalIntEnv("DRIFT_USB_DUMP_COUNT");
@@ -302,6 +307,9 @@ public sealed class XboxWirelessUsbDriver : IDisposable
         _cts = null;
         _thread = null;
 
+        // Best-effort: restore blinking LED pattern before closing.
+        TryRestoreBlinkingLed();
+
         CloseDevice();
 
         _isConnected = false;
@@ -344,6 +352,9 @@ public sealed class XboxWirelessUsbDriver : IDisposable
                 }
 
                 Interlocked.Increment(ref _statErrors);
+
+                // Best-effort: if we forced P1 LED, try restoring blinking before closing.
+                TryRestoreBlinkingLed();
                 MarkDisconnected();
                 CloseDevice();
                 Sleep(token, 250);
@@ -970,19 +981,51 @@ public sealed class XboxWirelessUsbDriver : IDisposable
             // 00 00 08 (0x40 + command) 00 ...
             // command 6..9 = solid player 1..4.
             var command = (byte)(5 + _ledPlayerIndex); // 6..9
-            var packet = new byte[12];
-            packet[0] = 0x00;
-            packet[1] = 0x00;
-            packet[2] = 0x08;
-            packet[3] = (byte)(0x40 + command);
-
-            outPipe.Write(packet, 0, packet.Length);
+            SendWirelessLedCommand(outPipe, command);
             _ledSent = true;
         }
         catch
         {
             // Best-effort only.
         }
+    }
+
+    private void TryRestoreBlinkingLed()
+    {
+        // Only do this if we are managing LED at all.
+        if (_ledPlayerIndex <= 0)
+            return;
+
+        var outPipe = _outPipe;
+        if (outPipe == null)
+            return;
+
+        try
+        {
+            // If we previously forced a solid player LED, attempt to restore a blinking/rotate pattern.
+            // 10=rotate is a good "searching" default; others may be configured via env var.
+            SendWirelessLedCommand(outPipe, _ledDisconnectCommand);
+        }
+        catch
+        {
+            // Best-effort only.
+        }
+        finally
+        {
+            _ledSent = false;
+        }
+    }
+
+    private static void SendWirelessLedCommand(USBPipe outPipe, byte command)
+    {
+        // Xbox 360 Wireless Receiver (Linux xpad driver XTYPE_XBOX360W): 12 bytes
+        // 00 00 08 (0x40 + command) 00 ...
+        var packet = new byte[12];
+        packet[0] = 0x00;
+        packet[1] = 0x00;
+        packet[2] = 0x08;
+        packet[3] = (byte)(0x40 + command);
+        outPipe.Write(packet, 0, packet.Length);
     }
 
     private static int ParseOptionalIntEnv(string name)
