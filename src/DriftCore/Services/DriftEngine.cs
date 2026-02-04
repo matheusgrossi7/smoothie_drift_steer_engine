@@ -98,6 +98,9 @@ public sealed class DriftEngine
 
         _lastDebug = DebugSnapshot.From(config, input);
 
+        // Update external force feedback before integrating steering.
+        _inputProcessor.SetFeedbackForce(_forceFeedback.LatestNormalizedForce);
+
         if (!input.IsConnected)
         {
             _inputProcessor.Reset();
