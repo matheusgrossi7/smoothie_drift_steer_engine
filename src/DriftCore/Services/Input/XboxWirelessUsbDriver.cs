@@ -1,5 +1,6 @@
 using System;
 using System.ComponentModel;
+using System.Numerics;
 using System.Threading;
 using MadWizard.WinUSBNet;
 using Vortice.XInput;
@@ -47,6 +48,25 @@ public sealed class XboxWirelessUsbDriver : IDisposable
     private int _lockedOffset;
     private readonly int[] _offsetVotes;
 
+    // Offset learning: track which candidate offsets actually show motion when the user moves.
+    // This prevents locking on a random alignment that merely looks "rest-like".
+    private readonly ushort[] _learnLastButtons;
+    private readonly byte[] _learnLastLt;
+    private readonly byte[] _learnLastRt;
+    private readonly short[] _learnLastLx;
+    private readonly short[] _learnLastLy;
+    private readonly short[] _learnLastRx;
+    private readonly short[] _learnLastRy;
+    private readonly int[] _learnEnergy;
+    private readonly bool[] _learnSeen;
+    private volatile bool _learnAnyMotion;
+
+    // Motion/variance tracking per byte index (within the 29-byte wireless input report).
+    // Helps selecting the payload window that actually changes with user input.
+    private readonly byte[] _prevReport;
+    private bool _hasPrevReport;
+    private readonly int[] _byteMotion;
+
     private Gamepad _lastGamepad;
     private double _lastSteering;
     private long _lastPacketTicks;
@@ -57,8 +77,9 @@ public sealed class XboxWirelessUsbDriver : IDisposable
     //   00 <pad:1..4> 00 F0 00 13 ...
     // The exact start of the XInput-like state payload is learned and locked-on (typically offset 6).
     //
-    // Then, to suppress single-frame glitches, we debounce by requiring two identical decodes
-    // before publishing the state to the engine.
+    // Then, to suppress single-frame glitches, we apply a light stabilization filter:
+    // publish every valid report, but ignore clearly-suspicious one-frame outliers unless
+    // they repeat on the next report.
     private const int WirelessInputReportLength = 29;
     private const int WirelessStateOffsetMin = 6;
     private const int WirelessStateOffsetMax = WirelessInputReportLength - 12; // inclusive
@@ -66,7 +87,7 @@ public sealed class XboxWirelessUsbDriver : IDisposable
     // NOTE: The wireless receiver payload layout varies from our initial assumptions.
     // We therefore learn the most plausible XInput-like payload offset and lock onto it.
 
-    // Debounce: require two consecutive identical decoded states before publishing.
+    // Stabilization: hold a pending outlier until it repeats.
     private bool _hasPending;
     private ushort _pendingButtons;
     private byte _pendingLeftTrigger;
@@ -76,6 +97,15 @@ public sealed class XboxWirelessUsbDriver : IDisposable
     private short _pendingRightThumbX;
     private short _pendingRightThumbY;
     private double _pendingSteering;
+
+    private bool _hasStable;
+    private ushort _stableButtons;
+    private byte _stableLeftTrigger;
+    private byte _stableRightTrigger;
+    private short _stableLeftThumbX;
+    private short _stableLeftThumbY;
+    private short _stableRightThumbX;
+    private short _stableRightThumbY;
 
     private long _statReads;
     private long _statTimeouts;
@@ -175,6 +205,20 @@ public sealed class XboxWirelessUsbDriver : IDisposable
         _forcedOffset = ParseOptionalIntEnv("DRIFT_USB_OFFSET");
         _lockedOffset = _forcedOffset >= WirelessStateOffsetMin && _forcedOffset <= WirelessStateOffsetMax ? _forcedOffset : -1;
         _offsetVotes = new int[WirelessStateOffsetMax + 1];
+
+        _learnLastButtons = new ushort[WirelessStateOffsetMax + 1];
+        _learnLastLt = new byte[WirelessStateOffsetMax + 1];
+        _learnLastRt = new byte[WirelessStateOffsetMax + 1];
+        _learnLastLx = new short[WirelessStateOffsetMax + 1];
+        _learnLastLy = new short[WirelessStateOffsetMax + 1];
+        _learnLastRx = new short[WirelessStateOffsetMax + 1];
+        _learnLastRy = new short[WirelessStateOffsetMax + 1];
+        _learnEnergy = new int[WirelessStateOffsetMax + 1];
+        _learnSeen = new bool[WirelessStateOffsetMax + 1];
+
+        _learnAnyMotion = false;
+        _prevReport = new byte[WirelessInputReportLength];
+        _byteMotion = new int[WirelessInputReportLength];
     }
 
     public bool IsRunning => _isRunning;
@@ -310,6 +354,10 @@ public sealed class XboxWirelessUsbDriver : IDisposable
                 Interlocked.Increment(ref _statFiltered);
                 continue;
             }
+
+            // Motion tracking helps us choose the real input payload window.
+            if (LooksLikeWirelessInputHeader(_buffer, bytesRead))
+                UpdateByteMotion(_buffer);
 
             if (_dumpEnabled && _dumpRemaining > 0 && LooksLikeWirelessInputHeader(_buffer, bytesRead))
             {
@@ -560,6 +608,10 @@ public sealed class XboxWirelessUsbDriver : IDisposable
         Volatile.Write(ref _lastPacketTicks, 0);
 
         _hasPending = false;
+        _hasStable = false;
+        _hasPrevReport = false;
+        Array.Clear(_byteMotion, 0, _byteMotion.Length);
+        _learnAnyMotion = false;
         Volatile.Write(ref _statPayloadOffset, -1);
     }
 
@@ -605,29 +657,100 @@ public sealed class XboxWirelessUsbDriver : IDisposable
         usedOffset = payloadOffset;
         steering = NormalizeAxis(lx);
 
-        // Debounce: require exact repetition once.
-        if (_hasPending &&
-            buttons == _pendingButtons && lt == _pendingLeftTrigger && rt == _pendingRightTrigger &&
-            lx == _pendingLeftThumbX && ly == _pendingLeftThumbY && rx == _pendingRightThumbX && ry == _pendingRightThumbY)
+        // Publish first good decode immediately.
+        if (!_hasStable)
         {
+            _hasStable = true;
+            _stableButtons = buttons;
+            _stableLeftTrigger = lt;
+            _stableRightTrigger = rt;
+            _stableLeftThumbX = lx;
+            _stableLeftThumbY = ly;
+            _stableRightThumbX = rx;
+            _stableRightThumbY = ry;
             _hasPending = false;
+
             gamepad = BuildGamepad(buttons, lt, rt, lx, ly, rx, ry);
             PublishLastDecoded(buttons, lt, rt, lx, ly, rx, ry);
             return true;
         }
 
-        _hasPending = true;
-        _pendingButtons = buttons;
-        _pendingLeftTrigger = lt;
-        _pendingRightTrigger = rt;
-        _pendingLeftThumbX = lx;
-        _pendingLeftThumbY = ly;
-        _pendingRightThumbX = rx;
-        _pendingRightThumbY = ry;
-        _pendingSteering = steering;
+        // If this looks like a one-frame outlier, only accept it once it repeats.
+        if (IsSuspiciousJump(buttons, lt, rt, lx, ly, rx, ry))
+        {
+            if (_hasPending &&
+                buttons == _pendingButtons && lt == _pendingLeftTrigger && rt == _pendingRightTrigger &&
+                lx == _pendingLeftThumbX && ly == _pendingLeftThumbY && rx == _pendingRightThumbX && ry == _pendingRightThumbY)
+            {
+                _hasPending = false;
+                _stableButtons = buttons;
+                _stableLeftTrigger = lt;
+                _stableRightTrigger = rt;
+                _stableLeftThumbX = lx;
+                _stableLeftThumbY = ly;
+                _stableRightThumbX = rx;
+                _stableRightThumbY = ry;
 
-        gamepad = default;
-        steering = 0;
+                gamepad = BuildGamepad(buttons, lt, rt, lx, ly, rx, ry);
+                PublishLastDecoded(buttons, lt, rt, lx, ly, rx, ry);
+                return true;
+            }
+
+            _hasPending = true;
+            _pendingButtons = buttons;
+            _pendingLeftTrigger = lt;
+            _pendingRightTrigger = rt;
+            _pendingLeftThumbX = lx;
+            _pendingLeftThumbY = ly;
+            _pendingRightThumbX = rx;
+            _pendingRightThumbY = ry;
+            _pendingSteering = steering;
+
+            gamepad = default;
+            steering = 0;
+            return false;
+        }
+
+        // Normal path: publish immediately.
+        _hasPending = false;
+        _stableButtons = buttons;
+        _stableLeftTrigger = lt;
+        _stableRightTrigger = rt;
+        _stableLeftThumbX = lx;
+        _stableLeftThumbY = ly;
+        _stableRightThumbX = rx;
+        _stableRightThumbY = ry;
+
+        gamepad = BuildGamepad(buttons, lt, rt, lx, ly, rx, ry);
+        PublishLastDecoded(buttons, lt, rt, lx, ly, rx, ry);
+        return true;
+    }
+
+    private bool IsSuspiciousJump(ushort buttons, byte lt, byte rt, short lx, short ly, short rx, short ry)
+    {
+        static int Abs(int v) => v < 0 ? -v : v;
+
+        int dlx = Abs(lx - _stableLeftThumbX);
+        int dly = Abs(ly - _stableLeftThumbY);
+        int drx = Abs(rx - _stableRightThumbX);
+        int dry = Abs(ry - _stableRightThumbY);
+
+        int dlt = Abs(lt - _stableLeftTrigger);
+        int drt = Abs(rt - _stableRightTrigger);
+
+        // Sudden full-scale jumps are typical of misaligned/non-input packets.
+        if (dlx >= 24000 || dly >= 24000 || drx >= 28000 || dry >= 28000)
+            return true;
+
+        // Triggers rarely jump from 0->255 in a single real frame.
+        if (dlt >= 220 || drt >= 220)
+            return true;
+
+        // If a lot of buttons flipped at once AND sticks jumped, treat as suspicious.
+        var buttonFlips = BitOperations.PopCount((uint)(buttons ^ _stableButtons));
+        if (buttonFlips >= 8 && (dlx >= 12000 || dly >= 12000 || drx >= 16000 || dry >= 16000))
+            return true;
+
         return false;
     }
 
@@ -660,6 +783,8 @@ public sealed class XboxWirelessUsbDriver : IDisposable
         }
 
         // Otherwise: scan candidates and vote for the most plausible.
+        // IMPORTANT: do not lock purely on "rest-looking" frames. We only lock once
+        // we see actual motion on some candidate offset.
         var bestOffset = -1;
         var bestScore = int.MinValue;
         ushort bestButtons = 0;
@@ -675,7 +800,21 @@ public sealed class XboxWirelessUsbDriver : IDisposable
             if (!TryReadXInputLikeAt(report, bytesRead, off, out var b, out var lt, out var rt, out var lx, out var ly, out var rx, out var ry))
                 continue;
 
-            var score = ScoreXInputLikeDecode(b, lt, rt, lx, ly, rx, ry);
+            UpdateLearning(off, b, lt, rt, lx, ly, rx, ry);
+
+            var score = ScoreXInputLikeDecode(b, lt, rt, lx, ly, rx, ry, motionMode: _learnAnyMotion);
+            if (score == int.MinValue)
+                continue;
+
+            // Prefer offsets that actually show motion when the user moves.
+            // Small bonus, capped, so plausibility still matters.
+            var energy = _learnEnergy[off];
+            score += Math.Min(120, energy / 800);
+
+            // Prefer offsets whose 12-byte window has real byte-level motion.
+            var motionWindow = GetMotionWindowScore(off);
+            score += Math.Min(220, motionWindow / 40);
+
             if (score > bestScore)
             {
                 bestScore = score;
@@ -704,7 +843,8 @@ public sealed class XboxWirelessUsbDriver : IDisposable
         }
 
         // Lock quickly, but require a margin to avoid flapping.
-        if (_offsetVotes[bestOffset] >= 6 && _offsetVotes[bestOffset] - secondBestVotes >= 3)
+        // Only lock after we've observed some motion on at least one candidate offset.
+        if (_learnAnyMotion && _offsetVotes[bestOffset] >= 8 && _offsetVotes[bestOffset] - secondBestVotes >= 4)
         {
             _lockedOffset = bestOffset;
             if (_dumpEnabled)
@@ -722,17 +862,24 @@ public sealed class XboxWirelessUsbDriver : IDisposable
         return true;
     }
 
-    private static int ScoreXInputLikeDecode(ushort buttons, byte lt, byte rt, short lx, short ly, short rx, short ry)
+    private static int ScoreXInputLikeDecode(ushort buttons, byte lt, byte rt, short lx, short ly, short rx, short ry, bool motionMode)
     {
-        // Heuristic scoring tuned for "controller at rest" plausibility.
+        // Heuristic scoring tuned for payload alignment plausibility.
         // Higher score = more likely correct payload alignment.
         var score = 0;
 
-        // Triggers at rest are usually close to 0, not ~128.
-        score += lt <= 20 ? 40 : 0;
-        score += rt <= 20 ? 40 : 0;
-        score -= (lt >= 120 && lt <= 136) ? 30 : 0;
-        score -= (rt >= 120 && rt <= 136) ? 30 : 0;
+        // If too many button bits are set, it's very likely not a real XInput buttons word.
+        var pressedCount = BitOperations.PopCount(buttons);
+        if (pressedCount >= 10)
+            return int.MinValue;
+        // 6+ simultaneous pressed is already highly suspicious in practice.
+        if (pressedCount >= 7)
+            score -= 220;
+        score -= Math.Max(0, pressedCount - 2) * 12;
+
+        // Triggers centered around ~128 are a common sign of misalignment.
+        score -= (lt >= 120 && lt <= 136) ? 40 : 0;
+        score -= (rt >= 120 && rt <= 136) ? 40 : 0;
 
         // Avoid obvious extreme pegging.
         score -= (lx is short.MinValue or short.MaxValue) ? 80 : 0;
@@ -740,17 +887,118 @@ public sealed class XboxWirelessUsbDriver : IDisposable
         score -= (rx is short.MinValue or short.MaxValue) ? 60 : 0;
         score -= (ry is short.MinValue or short.MaxValue) ? 60 : 0;
 
-        // Prefer smaller magnitudes (rest near center). Use cheap abs.
-        static int Abs(short v) => v < 0 ? -v : v;
-        score -= Abs(lx) / 512;
-        score -= Abs(ly) / 512;
-        score -= Abs(rx) / 1024;
-        score -= Abs(ry) / 1024;
+        if (!motionMode)
+        {
+            // When idle, prefer smaller magnitudes (rest near center).
+            static int Abs(short v) => v < 0 ? -v : v;
+            score -= Abs(lx) / 512;
+            score -= Abs(ly) / 512;
+            score -= Abs(rx) / 1024;
+            score -= Abs(ry) / 1024;
 
-        // Prefer no buttons pressed (rest).
-        score += buttons == 0 ? 25 : 0;
+            // Prefer no buttons pressed (rest).
+            score += buttons == 0 ? 25 : 0;
+        }
+        else
+        {
+            // When there's motion, avoid offsets that remain "stuck" at exact zeros.
+            // (Typical of decoding a static/status region instead of the real payload.)
+            if (buttons == 0 && lt == 0 && rt == 0 && lx == 0 && ly == 0 && rx == 0 && ry == 0)
+                score -= 180;
+        }
 
         return score;
+    }
+
+    private void UpdateLearning(int offset, ushort buttons, byte lt, byte rt, short lx, short ly, short rx, short ry)
+    {
+        if (offset < 0 || offset >= _learnSeen.Length)
+            return;
+
+        if (!_learnSeen[offset])
+        {
+            _learnSeen[offset] = true;
+            _learnLastButtons[offset] = buttons;
+            _learnLastLt[offset] = lt;
+            _learnLastRt[offset] = rt;
+            _learnLastLx[offset] = lx;
+            _learnLastLy[offset] = ly;
+            _learnLastRx[offset] = rx;
+            _learnLastRy[offset] = ry;
+            return;
+        }
+
+        static int Abs(int v) => v < 0 ? -v : v;
+
+        var delta = 0;
+        delta += Abs(lx - _learnLastLx[offset]);
+        delta += Abs(ly - _learnLastLy[offset]);
+        delta += Abs(rx - _learnLastRx[offset]) / 2;
+        delta += Abs(ry - _learnLastRy[offset]) / 2;
+        delta += Abs(lt - _learnLastLt[offset]) * 160;
+        delta += Abs(rt - _learnLastRt[offset]) * 160;
+        delta += BitOperations.PopCount((uint)(buttons ^ _learnLastButtons[offset])) * 600;
+
+        // Decay a bit so energy represents "recent" motion.
+        var energy = _learnEnergy[offset];
+        energy = (energy * 97) / 100;
+        energy = Math.Min(int.MaxValue / 4, energy + delta);
+        _learnEnergy[offset] = energy;
+
+        // If we see any meaningful motion, allow locking.
+        if (delta >= 5000)
+            _learnAnyMotion = true;
+
+        _learnLastButtons[offset] = buttons;
+        _learnLastLt[offset] = lt;
+        _learnLastRt[offset] = rt;
+        _learnLastLx[offset] = lx;
+        _learnLastLy[offset] = ly;
+        _learnLastRx[offset] = rx;
+        _learnLastRy[offset] = ry;
+    }
+
+    private void UpdateByteMotion(byte[] report)
+    {
+        if (report.Length < WirelessInputReportLength)
+            return;
+
+        // Decay previous motion to keep a "recent" signal.
+        for (int i = 0; i < _byteMotion.Length; i++)
+            _byteMotion[i] = (_byteMotion[i] * 97) / 100;
+
+        if (!_hasPrevReport)
+        {
+            Buffer.BlockCopy(report, 0, _prevReport, 0, WirelessInputReportLength);
+            _hasPrevReport = true;
+            return;
+        }
+
+        var totalDelta = 0;
+        for (int i = 0; i < WirelessInputReportLength; i++)
+        {
+            int d = report[i] - _prevReport[i];
+            if (d < 0) d = -d;
+            _byteMotion[i] = Math.Min(int.MaxValue / 4, _byteMotion[i] + d);
+            totalDelta += d;
+            _prevReport[i] = report[i];
+        }
+
+        // If there's meaningful motion anywhere in the report, allow lock-on.
+        if (totalDelta >= 12)
+            _learnAnyMotion = true;
+    }
+
+    private int GetMotionWindowScore(int offset)
+    {
+        if (offset < 0 || offset + 12 > _byteMotion.Length)
+            return 0;
+
+        var sum = 0;
+        for (int i = 0; i < 12; i++)
+            sum += _byteMotion[offset + i];
+
+        return sum;
     }
 
     private static int ParseOptionalIntEnv(string name)
