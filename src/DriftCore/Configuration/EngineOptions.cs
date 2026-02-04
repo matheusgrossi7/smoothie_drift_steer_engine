@@ -6,6 +6,19 @@ namespace DriftCore.Configuration;
 /// </summary>
 public sealed class EngineOptions
 {
+    public sealed class SteeringPhysicsOptions
+    {
+        public double Deadzone { get; set; } = 0.25;
+
+        // Higher gains / lower inertia => faster steering. Damping prevents runaway velocity.
+        public double Inertia { get; set; } = 0.2;
+        public double Damping { get; set; } = 12.0;
+        public double DriverTorqueGain { get; set; } = 16.0;
+        public double FeedbackTorqueGain { get; set; } = 15.0;
+
+        public double MaxDtSeconds { get; set; } = 0.05;
+    }
+
     /// <summary>
     /// XInput gamepad index (0-3).
     /// </summary>
@@ -25,6 +38,11 @@ public sealed class EngineOptions
     /// Smoothing strength (0-100).
     /// </summary>
     public int SmoothingValue { get; set; } = 50;
+
+    /// <summary>
+    /// Steering physics model tunables.
+    /// </summary>
+    public SteeringPhysicsOptions SteeringPhysics { get; set; } = new();
 
     /// <summary>
     /// If true, reads the Xbox 360 Wireless Receiver via WinUSB (WinUSBNet) instead of XInput.

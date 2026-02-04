@@ -234,6 +234,7 @@ public sealed class DriftEngine
 
         Volatile.Write(ref _config, normalized);
         _inputProcessor.UpdateSmoothing(normalized.SmoothingEnabled, normalized.SmoothingValue);
+        _inputProcessor.UpdatePhysics(normalized.SteeringPhysics);
         _heartbeat.UpdateSettings(EngineDefaults.HeartbeatEnabled, EngineDefaults.HeartbeatTimeout);
         _driverRetryTimer.UpdateInterval(EngineDefaults.DriverRetryInterval);
 
@@ -253,9 +254,32 @@ public sealed class DriftEngine
             SmoothingEnabled = input.SmoothingEnabled,
             SmoothingValue = Math.Clamp(input.SmoothingValue, 0, 100),
 
+            SteeringPhysics = NormalizeSteeringPhysics(input.SteeringPhysics),
+
             UseWinUsbReceiver = input.UseWinUsbReceiver,
             WinUsbDeviceInterfaceGuid = input.WinUsbDeviceInterfaceGuid ?? string.Empty,
             WinUsbReadTimeoutMs = Math.Max(0, input.WinUsbReadTimeoutMs)
+        };
+    }
+
+    private static EngineOptions.SteeringPhysicsOptions NormalizeSteeringPhysics(EngineOptions.SteeringPhysicsOptions input)
+    {
+        // Keep within sane bounds to avoid instability.
+        var deadzone = Math.Clamp(input.Deadzone, 0.0, 0.9);
+        var inertia = Math.Clamp(input.Inertia, 1e-4, 10.0);
+        var damping = Math.Clamp(input.Damping, 0.0, 200.0);
+        var driverGain = Math.Clamp(input.DriverTorqueGain, 0.0, 200.0);
+        var ffbGain = Math.Clamp(input.FeedbackTorqueGain, 0.0, 200.0);
+        var maxDt = Math.Clamp(input.MaxDtSeconds, 0.001, 0.25);
+
+        return new EngineOptions.SteeringPhysicsOptions
+        {
+            Deadzone = deadzone,
+            Inertia = inertia,
+            Damping = damping,
+            DriverTorqueGain = driverGain,
+            FeedbackTorqueGain = ffbGain,
+            MaxDtSeconds = maxDt
         };
     }
 

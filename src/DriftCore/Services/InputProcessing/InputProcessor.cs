@@ -1,21 +1,19 @@
 using System;
 using System.Diagnostics;
 using System.Threading;
+using DriftCore.Configuration;
 
 namespace DriftCore.Services.InputProcessing;
 
 /// <summary>Integrates steering position from driver torque + force feedback (FFB).</summary>
 public sealed class InputProcessor
 {
-    private const double Deadzone = 0.25;
-
-    // Tunables (normalized domain).
-    // Higher gains / lower inertia => faster steering. Damping prevents runaway velocity.
-    private const double Inertia = 0.2;
-    private const double Damping = 12.0;
-    private const double DriverTorqueGain = 16.0;
-    private const double FeedbackTorqueGain = 15.0;
-    private const double MaxDtSeconds = 0.05;
+    private double _deadzone = 0.25;
+    private double _inertia = 0.2;
+    private double _damping = 12.0;
+    private double _driverTorqueGain = 16.0;
+    private double _feedbackTorqueGain = 15.0;
+    private double _maxDtSeconds = 0.05;
 
     private bool _smoothingEnabled;
     private int _smoothingValue;
@@ -30,6 +28,17 @@ public sealed class InputProcessor
     {
         Volatile.Write(ref _smoothingEnabled, enabled);
         Volatile.Write(ref _smoothingValue, Math.Clamp(value, 0, 100));
+    }
+
+    public void UpdatePhysics(EngineOptions.SteeringPhysicsOptions options)
+    {
+        // Assumes options are already normalized/clamped by DriftEngine.
+        _deadzone = options.Deadzone;
+        _inertia = options.Inertia;
+        _damping = options.Damping;
+        _driverTorqueGain = options.DriverTorqueGain;
+        _feedbackTorqueGain = options.FeedbackTorqueGain;
+        _maxDtSeconds = options.MaxDtSeconds;
     }
 
     /// <summary>
@@ -48,14 +57,14 @@ public sealed class InputProcessor
 
         // Deadzone to avoid drift around zero.
         var absInput = Math.Abs(input);
-        if (absInput <= Deadzone)
+        if (absInput <= _deadzone)
         {
             input = 0.0;
         }
         else
         {
             // Remap to keep a linear response outside the deadzone.
-            var scaled = (absInput - Deadzone) / (1.0 - Deadzone);
+            var scaled = (absInput - _deadzone) / (1.0 - _deadzone);
             input = Math.Sign(input) * Math.Clamp(scaled, 0.0, 1.0);
         }
 
@@ -78,10 +87,10 @@ public sealed class InputProcessor
         var dtSeconds = deltaTicks / (double)Stopwatch.Frequency;
 
         // Avoid huge integration steps after stalls/breakpoints.
-        if (dtSeconds > MaxDtSeconds) dtSeconds = MaxDtSeconds;
+        if (dtSeconds > _maxDtSeconds) dtSeconds = _maxDtSeconds;
 
         // Driver torque target: stick input after deadzone/remap.
-        var desiredDriverTorque = input * DriverTorqueGain;
+        var desiredDriverTorque = input * _driverTorqueGain;
 
         // Smoothing controls how fast the driver can apply torque (torque slew-rate limiter).
         if (Volatile.Read(ref _smoothingEnabled))
@@ -99,11 +108,11 @@ public sealed class InputProcessor
             _driverTorque = desiredDriverTorque;
         }
 
-        var feedbackTorque = Volatile.Read(ref _feedbackForce) * FeedbackTorqueGain;
+        var feedbackTorque = Volatile.Read(ref _feedbackForce) * _feedbackTorqueGain;
 
         // Core dynamics: a = (sumTorque - damping * v) / inertia
-        var inertia = Math.Max(1e-6, Inertia);
-        var damping = Math.Max(0.0, Damping);
+        var inertia = Math.Max(1e-6, _inertia);
+        var damping = Math.Max(0.0, _damping);
         var acceleration = (_driverTorque + feedbackTorque - (_velocity * damping)) / inertia;
 
         _velocity += acceleration * dtSeconds;
