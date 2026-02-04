@@ -204,8 +204,9 @@ public sealed class DriftEngine
         var src = config.UseWinUsbReceiver ? "WinUSB" : $"XInput{config.InputDeviceIndex}";
         if (config.UseWinUsbReceiver && _usbDriver != null)
         {
+            // Truncado: mostrar apenas até 'Processed' conforme solicitado
             var s = _usbDriver.GetStats();
-            Console.WriteLine($"[IO] {src} | Connected: {input.IsConnected} | Raw: {input.Steering:F3} | Processed: {processed:F3} | vJoy: {_virtualWheel?.IsConnected == true} | usb: reads={s.Reads} parsed={s.Parsed} filtered={s.Filtered} to={s.Timeouts} err={s.Errors} last={s.LastBytes} b1={s.LastB1:X2} if={s.LastInterfaceNumber} ep=0x{s.LastInPipeAddress:X2} off={s.PayloadOffset} btn=0x{s.LastButtons:X4} lt={s.LastLeftTrigger} rt={s.LastRightTrigger} lx={s.LastLeftThumbX} ly={s.LastLeftThumbY}");
+            Console.WriteLine($"[IO] {src} | Connected: {input.IsConnected} | Raw: {input.Steering:F3} | Processed: {processed:F3}");
         }
         else
         {
