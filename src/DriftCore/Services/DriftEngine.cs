@@ -270,6 +270,8 @@ public sealed class DriftEngine
         var damping = Math.Clamp(input.Damping, 0.0, 200.0);
         var driverGain = Math.Clamp(input.DriverTorqueGain, 0.0, 200.0);
         var ffbGain = Math.Clamp(input.FeedbackTorqueGain, 0.0, 200.0);
+        var friction = Math.Clamp(input.Friction, 0.0, 200.0);
+        var centering = Math.Clamp(input.CenteringSpringStrength, 0.0, 200.0);
         var maxDt = Math.Clamp(input.MaxDtSeconds, 0.001, 0.25);
 
         var softLock = input.SoftLock ?? new EngineOptions.SteeringPhysicsOptions.SoftLockOptions();
@@ -286,6 +288,8 @@ public sealed class DriftEngine
             Damping = damping,
             DriverTorqueGain = driverGain,
             FeedbackTorqueGain = ffbGain,
+            Friction = friction,
+            CenteringSpringStrength = centering,
             MaxDtSeconds = maxDt,
             SoftLock = new EngineOptions.SteeringPhysicsOptions.SoftLockOptions
             {

@@ -50,6 +50,9 @@ public sealed class InputProcessor
         _feedbackTorqueGain = options.FeedbackTorqueGain;
         _maxDtSeconds = options.MaxDtSeconds;
 
+        _friction = options.Friction;
+        _centeringSpringStrength = options.CenteringSpringStrength;
+
         _softLockEnabled = options.SoftLock.Enabled;
         _softLockStart = options.SoftLock.Start;
         _softLockStiffness = options.SoftLock.Stiffness;

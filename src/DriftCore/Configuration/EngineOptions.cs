@@ -54,6 +54,17 @@ public sealed class EngineOptions
         public double DriverTorqueGain { get; set; } = 16.0;
         public double FeedbackTorqueGain { get; set; } = 15.0;
 
+        /// <summary>
+        /// Coulomb friction amount used by the integrator to resist small unwanted motion
+        /// (helps prevent slow "ghost drift").
+        /// </summary>
+        public double Friction { get; set; } = 1.5;
+
+        /// <summary>
+        /// Passive centering spring strength (caster-like alignment) pulling towards center.
+        /// </summary>
+        public double CenteringSpringStrength { get; set; } = 1.5;
+
         public double MaxDtSeconds { get; set; } = 0.05;
 
         /// <summary>
