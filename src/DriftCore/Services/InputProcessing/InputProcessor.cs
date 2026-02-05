@@ -11,6 +11,8 @@ public sealed class InputProcessor
     private double _deadzone = 0.25;
     private double _inertia = 0.2;
     private double _damping = 12.0;
+    private double _dampingLowFfbBoost;
+    private double _dampingBoostExponent = 2.0;
     private double _driverTorqueGain = 16.0;
     private double _feedbackTorqueGain = 15.0;
     private double _maxDtSeconds = 0.05;
@@ -59,6 +61,8 @@ public sealed class InputProcessor
         _deadzone = options.Deadzone;
         _inertia = options.Inertia;
         _damping = options.Damping;
+        _dampingLowFfbBoost = options.DampingLowFfbBoost;
+        _dampingBoostExponent = options.DampingBoostExponent;
         _driverTorqueGain = options.DriverTorqueGain;
         _feedbackTorqueGain = options.FeedbackTorqueGain;
         _maxDtSeconds = options.MaxDtSeconds;
@@ -187,7 +191,7 @@ public sealed class InputProcessor
         var totalTorque = _driverTorque + feedbackTorque + softLockTorque + centeringTorque;
 
         var inertia = Math.Max(1e-6, _inertia);
-        var damping = Math.Max(0.0, _damping);
+        var damping = Math.Max(0.0, _damping) * ComputeEffectiveDampingFactorFromFfb();
 
         // Damping (air/fluid resistance) - keep existing behavior.
         var internalTorque = totalTorque - (_velocity * damping);
@@ -220,6 +224,21 @@ public sealed class InputProcessor
 
         _velocity += acceleration * dtSeconds;
         _steeringPosition += _velocity * dtSeconds;
+    }
+
+    private double ComputeEffectiveDampingFactorFromFfb()
+    {
+        // Boost damping when |FFB| is low (smooth transition).
+        // invSmooth: 1 at no FFB, 0 at max FFB.
+        var absFfb = Math.Abs(Volatile.Read(ref _feedbackForce)); // 0..1
+        var inv = 1.0 - Math.Clamp(absFfb, 0.0, 1.0);
+        var invSmooth = inv * inv * (3.0 - (2.0 * inv));
+
+        var lowFfbBoost = Math.Clamp(_dampingLowFfbBoost, 0.0, 10.0);
+        var exponent = Math.Clamp(_dampingBoostExponent, 0.25, 8.0);
+
+        // Factor is 1.0 at high FFB, and (1 + boost) at very low FFB.
+        return 1.0 + (lowFfbBoost * Math.Pow(invSmooth, exponent));
     }
 
     private double ComputeSoftLockTorque()

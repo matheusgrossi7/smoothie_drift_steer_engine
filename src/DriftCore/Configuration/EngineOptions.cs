@@ -51,6 +51,19 @@ public sealed class EngineOptions
         // Higher gains / lower inertia => faster steering. Damping prevents runaway velocity.
         public double Inertia { get; set; } = 0.2;
         public double Damping { get; set; } = 12.0;
+
+        /// <summary>
+        /// Boosts damping when force feedback (FFB) is low.
+        /// 0.0 = no boost; higher values increase damping as |FFB| approaches 0.
+        /// Effective factor transitions smoothly from 1.0 at high |FFB| to (1 + boost) at low |FFB|.
+        /// </summary>
+        public double DampingLowFfbBoost { get; set; } = 0.0;
+
+        /// <summary>
+        /// Shape exponent for how strongly the low-FFB damping boost is concentrated near |FFB| == 0.
+        /// Values &gt; 1.0 concentrate the boost closer to zero FFB.
+        /// </summary>
+        public double DampingBoostExponent { get; set; } = 2.0;
         public double DriverTorqueGain { get; set; } = 16.0;
         public double FeedbackTorqueGain { get; set; } = 15.0;
 
@@ -114,7 +127,7 @@ public sealed class EngineOptions
     /// If true, reads the Xbox 360 Wireless Receiver via WinUSB (WinUSBNet) instead of XInput.
     /// Requires the device to be bound to WinUSB and a Device Interface GUID to be configured.
     /// </summary>
-    public bool UseWinUsbReceiver { get; set; } = false;
+    public bool UseWinUsbReceiver { get; set; } = true;
 
     /// <summary>
     /// WinUSB Device Interface GUID (defined in the WinUSB .inf) used to enumerate the receiver.

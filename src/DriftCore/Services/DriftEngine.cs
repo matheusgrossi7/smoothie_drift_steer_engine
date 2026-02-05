@@ -274,6 +274,8 @@ public sealed class DriftEngine
         var deadzone = Math.Clamp(input.Deadzone, 0.0, 0.9);
         var inertia = Math.Clamp(input.Inertia, 1e-4, 10.0);
         var damping = Math.Clamp(input.Damping, 0.0, 200.0);
+        var dampingLowFfbBoost = Math.Clamp(input.DampingLowFfbBoost, 0.0, 10.0);
+        var dampingBoostExponent = Math.Clamp(input.DampingBoostExponent, 0.25, 8.0);
         var driverGain = Math.Clamp(input.DriverTorqueGain, 0.0, 200.0);
         var ffbGain = Math.Clamp(input.FeedbackTorqueGain, 0.0, 200.0);
         var friction = Math.Clamp(input.Friction, 0.0, 200.0);
@@ -292,6 +294,8 @@ public sealed class DriftEngine
             Deadzone = deadzone,
             Inertia = inertia,
             Damping = damping,
+            DampingLowFfbBoost = dampingLowFfbBoost,
+            DampingBoostExponent = dampingBoostExponent,
             DriverTorqueGain = driverGain,
             FeedbackTorqueGain = ffbGain,
             Friction = friction,
