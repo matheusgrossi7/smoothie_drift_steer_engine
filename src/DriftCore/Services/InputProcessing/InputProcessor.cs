@@ -27,6 +27,8 @@ public sealed class InputProcessor
 
     private bool _smoothingEnabled;
     private int _smoothingValue;
+    private double _smoothingLowFfbBoost = 2.5;
+    private double _smoothingBoostExponent = 2.0;
 
     private double _steeringPosition;
     private double _velocity;
@@ -36,8 +38,19 @@ public sealed class InputProcessor
 
     public void UpdateSmoothing(bool enabled, int value)
     {
+        UpdateSmoothing(enabled, value, _smoothingLowFfbBoost, _smoothingBoostExponent);
+    }
+
+    public void UpdateSmoothing(bool enabled, int value, double lowFfbBoost, double boostExponent)
+    {
         Volatile.Write(ref _smoothingEnabled, enabled);
         Volatile.Write(ref _smoothingValue, Math.Clamp(value, 0, 100));
+
+        lowFfbBoost = Math.Clamp(lowFfbBoost, 0.0, 20.0);
+        boostExponent = Math.Clamp(boostExponent, 0.25, 8.0);
+
+        Volatile.Write(ref _smoothingLowFfbBoost, lowFfbBoost);
+        Volatile.Write(ref _smoothingBoostExponent, boostExponent);
     }
 
     public void UpdatePhysics(EngineOptions.SteeringPhysicsOptions options)
@@ -141,7 +154,24 @@ public sealed class InputProcessor
             return;
         }
 
-        var maxTorqueRate = ComputeMaxTorqueRate(smoothingValue);
+        // Make smoothing inversely proportional to FFB magnitude, with:
+        // - smooth progression across the range (no sharp changes near the ends)
+        // - stronger boost when FFB is low
+        var absFfb = Math.Abs(Volatile.Read(ref _feedbackForce)); // 0..1
+        var inv = 1.0 - Math.Clamp(absFfb, 0.0, 1.0); // 1 at no FFB, 0 at max FFB
+
+        // Smoothstep: 0..1 with zero slope at both ends.
+        var invSmooth = inv * inv * (3.0 - (2.0 * inv));
+
+        // Boost is concentrated towards low FFB while keeping a smooth transition.
+        var lowFfbBoost = Math.Max(0.0, Volatile.Read(ref _smoothingLowFfbBoost));
+        var boostExponent = Math.Max(0.01, Volatile.Read(ref _smoothingBoostExponent));
+        var boostShape = Math.Pow(invSmooth, boostExponent);
+
+        var effectiveSmoothingValue = smoothingValue * invSmooth * (1.0 + (lowFfbBoost * boostShape));
+        effectiveSmoothingValue = Math.Clamp(effectiveSmoothingValue, 0.0, 100.0);
+
+        var maxTorqueRate = ComputeMaxTorqueRate(effectiveSmoothingValue);
         _driverTorque = MoveTowards(_driverTorque, desiredDriverTorque, maxTorqueRate * dtSeconds);
     }
 
@@ -255,14 +285,14 @@ public sealed class InputProcessor
 
     private static double Lerp(double a, double b, double t) => a + ((b - a) * Math.Clamp(t, 0.0, 1.0));
 
-    private static double ComputeMaxTorqueRate(int smoothingValue)
+    private static double ComputeMaxTorqueRate(double smoothingValue)
     {
         // Map 0..100 -> maxRate..minRate with a progressive curve (more effect at higher values).
         // Units: torque-units per second.
         const double maxRate = 350.0;
         const double minRate = 3.0;
 
-        var t = Math.Clamp(smoothingValue, 0, 100) / 100.0;
+        var t = Math.Clamp(smoothingValue, 0.0, 100.0) / 100.0;
         t = Math.Pow(t, 1.8);
 
         // Exponential (geometric) interpolation for a wider, more perceptible range.

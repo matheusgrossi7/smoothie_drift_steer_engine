@@ -233,7 +233,11 @@ public sealed class DriftEngine
         var normalized = NormalizeOptions(config);
 
         Volatile.Write(ref _config, normalized);
-        _inputProcessor.UpdateSmoothing(normalized.SmoothingEnabled, normalized.SmoothingValue);
+        _inputProcessor.UpdateSmoothing(
+            normalized.SmoothingEnabled,
+            normalized.SmoothingValue,
+            normalized.SmoothingLowFfbBoost,
+            normalized.SmoothingBoostExponent);
         _inputProcessor.UpdatePhysics(normalized.SteeringPhysics);
         _heartbeat.UpdateSettings(EngineDefaults.HeartbeatEnabled, EngineDefaults.HeartbeatTimeout);
         _driverRetryTimer.UpdateInterval(EngineDefaults.DriverRetryInterval);
@@ -253,6 +257,8 @@ public sealed class DriftEngine
 
             SmoothingEnabled = input.SmoothingEnabled,
             SmoothingValue = Math.Clamp(input.SmoothingValue, 0, 100),
+            SmoothingLowFfbBoost = Math.Clamp(input.SmoothingLowFfbBoost, 0.0, 20.0),
+            SmoothingBoostExponent = Math.Clamp(input.SmoothingBoostExponent, 0.25, 8.0),
 
             SteeringPhysics = NormalizeSteeringPhysics(input.SteeringPhysics),
 

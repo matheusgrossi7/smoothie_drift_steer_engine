@@ -94,6 +94,18 @@ public sealed class EngineOptions
     public int SmoothingValue { get; set; } = 50;
 
     /// <summary>
+    /// Extra boost applied to smoothing when force feedback (FFB) is low.
+    /// Higher values increase smoothing more aggressively as |FFB| approaches 0.
+    /// </summary>
+    public double SmoothingLowFfbBoost { get; set; } = 2.5;
+
+    /// <summary>
+    /// Shape exponent for how strongly the low-FFB boost is concentrated near |FFB| == 0.
+    /// Values > 1.0 concentrate the boost closer to zero FFB.
+    /// </summary>
+    public double SmoothingBoostExponent { get; set; } = 2.0;
+
+    /// <summary>
     /// Steering physics model tunables.
     /// </summary>
     public SteeringPhysicsOptions SteeringPhysics { get; set; } = new();
