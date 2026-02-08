@@ -12,109 +12,98 @@ This project focuses on reinterpreting controller input as a simulated steering 
 
 ---
 
-## ⚠️ Current Status: NON-FUNCTIONAL (Work In Progress)
+## ⚠️ Current Status: Work In Progress
 
-Only controller -> engine -> vJoy communication is currently functional (it already process the input, holding the steering angle properly in vJoy). The engine's output to Forza via EmuWheel is not working due to the following issues:
-
-### Problems Identified:
-
-* **1) vJoy Access Conflict:** Both **DRIFT Engine** and **Forza EmuWheel** are attempting to access the same vJoy device simultaneously. This causes access conflicts, making it impossible for both to function correctly at the same time.
-
-* **2) HidHide Failure:** The software is unable to effectively apply hiding to **Xbox Controller**. Even with the device selected and blocking enabled, it remains visible to Steam and Forza. Despite this, it hides the physical controller correctly in other software (e.g., vJoy Monitor, EmuWheel Configurator). I have tested multiples workarounds, involving Windows 11, Steam and Forza Horizon 5 configuration, but none have resolved the issue.
-
-    - **Symptom:** Both **Steam** and **Forza** simultaneously detect two devices:
-        1.  🎮 The Physical Controller (Xbox Wireless).
-        2.  🕹️ The Emulated Controller.
-
-    - **Consequence:** A "Double Input" conflict occurs. The game receives raw input from the physical controller (unprocessed) at the same time it receives processed input from the *Drift Engine*, resulting in erratic behavior and nullifying the engine's simulation.
+controller -> engine -> vJoy -> Forza communication is currently functional (it already simulates a wheel using vJoy, including force feedback). However, it does not have an stable release yet; there are planned features that are not yet implemented.
 
 ## Why not use ViGEmBus? (and use vJoy instead)
 
 * **1) In Forza Horizon 5:** ViGEmBus is not recognized as a wheel device, only as a generic controller. The game applies a non-configurable deadzone on the steering axis between -0.25 and 0.25 (25% of the total range, in the center of the axis), which does not favor smooth movement; although it can be bypassed with adjustments in the engine's input processing, it is not ideal.
 
-* **2) With EmuWheel:** ViGEmBus + EmuWheel only allows for Combined Brake and Throttle (Brake and Accelerator combined into a single axis). This does not allow Left Foot Braking to adjust the car's angle (Braking with the left foot - finger, in this case - while accelerating), which is important for advanced drift simulation with specific brake tuning.
+* **2) ViGEmBus alone does not support force feedback**.
 
-## Why not use SpecialK to hide input?
+## Why not use HidHide to hide input to avoid double input (controller + vJoy)?
+* Even with the device selected and blocking enabled, it remains visible to Steam and Forza. Despite this, it hides the physical controller correctly in other software (e.g., vJoy Monitor, EmuWheel Configurator). I have tested multiples workarounds, involving Windows 11, Steam and Forza Horizon 5 configuration, but none have resolved the issue. The input behavior in Forza was not consistent. The only way I found to hide the controller from Steam and Forza was replacing the Xbox Controller driver from xinput to winUsb using Zadig, so steam and Forza no longer recognize it.
+
+## Why not use SpecialK to hide input to avoid double input?
 * Well... its modding. It injects dlls directly into the game, which probably gonna get us banned.
 
 ---
 
 Next steps: 
-- Fix vJoy access conflict
-- Fix input hiding: Maybe try manage the usb ports directly and use custom controller driver.
-    - Zadig + Vortice.DirectInput?
-
+- Refactor the engine: There are old code from xinput and some stuff not used anymore that can be removed.
+- Use Forza UDP Telemetry to improve the engine's behavior.
 
 ---
 
 # DRIFT Project - Input/Output Configuration Guide
 
-This document details the step-by-step process to configure the project, ensuring that **vJoy**, **HidHide**(maybe), and not-**EmuWheel** work with the **DRIFT Engine**.
+This document details the step-by-step process to configure the project, ensuring that everything works.
+
+Note: I have only tested with Xbox 360 Wireless Receiver and Forza Horizon 5. For other controllers to work, you may need to implement a custom driver using WinUSB.
 
 ## 📋 Prerequisites
 * **.NET 8.0 SDK**
-* **Administrator Access** (for driver installation)
+* **IDE** (e.g., Visual Studio Code with C# extensions).
 
 ## 1. Engine Configuration (DRIFT)
 
 * Ensure that the build is up to date and compiling without errors.
-    - run in test mode: ...src\DriftCore> `dotnet run --test`
+    - run in test mode: ...smoothie_drift_steer_engine\src\DriftCore> `dotnet run --test`
 
-## 2. vJoy (Virtual Joystick)
+## 2. Hide the physical controller from Steam and Forza
 
-### 2.1 Installation
+
+### 2.1 Download **Zadig** (recommended version: 2.9).
+
+### 2.2 Change the driver of the physical controller to **WinUSB** using Zadig:
+1.  Open **Zadig** as Administrator.
+2.  In the top menu, select `Options` > `List All Devices`.
+3.  From the dropdown, select your physical controller (in this case, Xbox 360 Wireless Receiver).
+4.  In the driver selection box, choose **WinUSB**.
+5.  Click `Install Driver` and wait for the process to complete.
+6. Restart your computer to ensure the changes take effect.
+7.  **Verification:** After installation, check if the controller is no longer visible in Steam's controller settings and Forza's controller configuration. It should not be listed as an available gamepad.
+
+PS: If you want to revert the changes, go to device manager, find the controller/receiver, uninstall the driver, disconnect and reconnect the controller, and it should reinstall the original driver. You may need to restart your computer again.
+
+## 3. Configure the Engine to use the correct input devices:
+1.  Open the engine's configuration file: `appsettings.json`.
+2. make sure "UseWinUsbReceiver" is true.
+3. Set the `WinUsbDeviceInterfaceGuid` to the correct value for your controller/receiver. You can find the correct GUID by opening Device Manager, finding your controller/receiver, right-clicking and selecting `Properties` -> `Details`.
+4. **Verification:** Run the engine in test mode (`dotnet run --test`) and check the console output to confirm that it detects the WinUSB device correctly.
+
+## 4. vJoy (Virtual Joystick)
+
+### 4.1 Installation
 1.  Download and install **vJoy** (recommended version: 2.1.9).
 2.  After installing, open **Configure vJoy (vJoyConf)** as Administrator.
 
-### 2.2 Configuration
+### 4.2 Configuration
 Configure **vJoy Device 1** exactly according to the parameters below:
 
 * [x] **Basic Axes:** Check ALL (`X`, `Y`, `Z`, `Rx`, `Ry`, `Rz`, `Slider`, `Dial/Slider2`).
 * [ ] **Force Feedback:** Unchecked (*Enable Effects* OFF).
 * **Buttons:** Set to **128**.
 * **POV Hat Switch:**
-    * Select **Continuous**.
+    * Select **4 directions**.
     * POVs: **1**.
+* **Force Feedback:** Every thing checked (ON).
 * **Finish:** Click on `Apply`.
 
-### 2.3 Test (Monitoring)
+### 4.3 Test (Monitoring)
 1.  Open **vJoy Monitor** (JoyMonitor).
 2.  Select "vJoy Device 1".
 3.  Start the **DRIFT Engine** in test mode.
 4.  **Verification:** When moving the physical controller or interacting with the Engine, do the bars in *JoyMonitor* move?
     * *If yes:* The Engine -> vJoy communication is working.
 
-## 3. HidHide (Hardware Hiding) - optional for now
-
-HidHide is crucial to avoid "double input" in games (although the error mentioned above still exists, it works correctly for other programs).
-
-### 3.1 Installation
-1.  Download and install the latest version of **HidHide**.
-2.  **Restart the computer** (mandatory for the driver to function correctly).
-
-### 3.2 Configuration: "Applications" Tab (Whitelist)
-
-Add the paths using the `+` button:
-1.  `DriftCore.exe` (Engine). It needs to see the physical controller.
-    * **Build Path:**
-    `...\smoothie_drift_steer_engine\src\DriftCore\bin\Debug\net8.0\DriftCore.exe`
-
-### 3.3 Configuration: "Devices" Tab
-1.  Check the `Enable device hiding` box.
-2.  In the list, locate your physical controller (e.g., *HID-compliant game controller* or other).
-3.  Select the controller.
-4.  Reconnect the controller.
-
-## 4. Forza EmuWheel - optional for now
-
-(Not yet functional due to the problems mentioned at the beginning).
-
-1.  Download **Forza EmuWheel**.
-2.  Open **Configurator.exe**:
-    * Map vJoy to the wheel controls.
-3.  Open **Forza EmuWheel.exe**:
-
-    * Click **Start**.
+## 5.  **In-Game Test**
+1.  Start Forza Horizon 5 (or any Forza game).
+2.  Go to the game's controller configuration menu.
+3.  Go to the steering mapping section.
+4.  Select select a preset.
+5.  Map the input. (map the steering last, so it doesn't interfere with the other inputs)
 
 ---
 

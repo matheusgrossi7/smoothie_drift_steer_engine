@@ -1,5 +1,6 @@
 {
     "cSpell.words": [
+        "appsettings",
         "ASPNETCORE",
         "Configurator",
         "deadzone",
@@ -14,6 +15,7 @@
         "recenters",
         "Swashbuckle",
         "thumbstick",
-        "Vortice"
+        "Vortice",
+        "Zadig"
     ]
 }
