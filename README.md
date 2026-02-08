@@ -67,7 +67,7 @@ Note: I have only tested with Xbox 360 Wireless Receiver and Forza Horizon 5. Fo
 
 PS: If you want to revert the changes, go to device manager, find the controller/receiver, uninstall the driver, disconnect and reconnect the controller, and it should reinstall the original driver. You may need to restart your computer again.
 
-## 3. Configure the Engine to use the correct input devices:
+## 3. Configure the Engine to use the correct input device:
 1.  Open the engine's configuration file: `appsettings.json`.
 2. make sure "UseWinUsbReceiver" is true.
 3. Set the `WinUsbDeviceInterfaceGuid` to the correct value for your controller/receiver. You can find the correct GUID by opening Device Manager, finding your controller/receiver, right-clicking and selecting `Properties` -> `Details`.
@@ -99,10 +99,10 @@ Configure **vJoy Device 1** exactly according to the parameters below:
     * *If yes:* The Engine -> vJoy communication is working.
 
 ## 5.  **In-Game Test**
-1.  Start Forza Horizon 5 (or any Forza game).
+1.  Start Forza Horizon 5.
 2.  Go to the game's controller configuration menu.
 3.  Go to the steering mapping section.
-4.  Select select a preset.
+4.  Select select a preset to enable the mapping.
 5.  Map the input. (map the steering last, so it doesn't interfere with the other inputs)
 
 ---
@@ -124,3 +124,4 @@ Use this project **at your own risk**.
 
 This project is licensed under the **MIT License**.  
 See the [LICENSE](LICENSE) file for more details.
+
