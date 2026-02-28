@@ -1,22 +1,28 @@
 ﻿> Note: The development of this project was inspired by the principles of the eXtreme Go Horse (XGH) methodology (+ vibe coding), which served as a lighthearted reference rather than a strictly followed framework. If you are willing to see something more structured made by me, you can check the [bits_goals_module](https://github.com/bits-house/bits_goals_module)
 
-## 🎯 Project Objective And Motivation
+# Project Overview
 
-This project aims to create a **steering simulation layer** that allows a standard game controller to behave like a **continuous steering system**, rather than a raw digital input, in Forza games (Forza Horizon and Forza Motorsport series).
+This project creates a **steering simulation layer** that allows a standard game controller to behave like a **steering wheel** in Forza Horizon 5.
 
-Instead of mapping thumbstick position directly to steering angle, the engine maintains an internal **steering state**, producing an output closer to a real steering rack.
+> Note: The engine can be adapted to work with other games that have steering wheel support, because it simulates a physical wheel and gets the force feedback directly from it (using vJoy). But, the main focus is Forza Horizon 5 for now.
 
-The core goal is **not to make drifting easier**, but to make it **more natural, predictable, and visually smooth**, preserving driver skill while eliminating the inherent limitations of digital thumbstick steering (some games like BeamNG.drive already implement similar systems natively).
+Instead of mapping thumbstick position directly to steering angle, the engine maintains an internal **steering state**, producing a smooth output when drifting.
 
-In drifting, **style matters**. Smooth steering arcs and controlled counter-steer are essential for both realism and visual appeal. Traditional game controllers, with their binary thumbstick inputs, often lead to abrupt and unnatural steering behavior, detracting from the overall experience.
+The goal is to make drifting with a **game controller** visually smooth from both my perspective and other players' perspectives, eliminating the limitations of digital thumbstick steering (some games like BeamNG.drive already implement similar systems natively).
 
-This project focuses on reinterpreting controller input as a simulated steering system.
+In drifting, **style matters**. Smooth steering arcs and controlled counter-steer are essential for both realism and visual appeal. Traditional game controllers, with their snap-to-center thumbstick inputs, often lead to abrupt and unnatural steering behavior in Forza games, that gets worse when combined with the animations of the car in the game's online mode, that almost disables all animations - making the wheel jump between positions immediately, detracting from the overall experience. That doesn't happen with a wheel.
+
+This project focuses on reinterpreting controller input as a simulated steering system, making it as smooth and natural as possible.
 
 ---
 
-## ⚠️ Current Status: Work In Progress
+# ⚠️ Current Status: Work In Progress
 
-controller -> engine -> vJoy -> Forza communication is currently functional (it already simulates a wheel using vJoy, including force feedback). A stable release is not planned; eventhough there are planned features that are not implemented yet.
+controller -> engine -> vJoy -> Forza communication is currently functional (it already simulates a wheel using vJoy, including force feedback - that counter steers the car automatically, combining FFB with the user's input). A stable release is not planned, but I will keep improving the engine and adding features.
+
+--- 
+
+# Knowledge base
 
 ## Why not use ViGEmBus? (and use vJoy instead)
 
@@ -38,9 +44,9 @@ Next steps:
 
 ---
 
-# DRIFT Project - Input/Output Configuration Guide
+# Setup Guide
 
-This document details the step-by-step process to configure the project, ensuring that everything works.
+This document details the step-by-step process to configure the project, ensuring that everything works - or not.
 
 Note: I have only tested with Xbox 360 Wireless Receiver and Forza Horizon 5. For other controllers to work, you may need to implement a custom driver using WinUSB.
 
@@ -48,13 +54,12 @@ Note: I have only tested with Xbox 360 Wireless Receiver and Forza Horizon 5. Fo
 * **.NET 8.0 SDK**
 * **IDE** (e.g., Visual Studio Code with C# extensions).
 
-## 1. Engine Configuration (DRIFT)
+## 1. Engine Configuration
 
 * Ensure that the build is up to date and compiling without errors.
     - run in test mode: ...smoothie_drift_steer_engine\src\DriftCore> `dotnet run --test`
 
 ## 2. Hide the physical controller from Steam and Forza
-
 
 ### 2.1 Download **Zadig** (recommended version: 2.9).
 
@@ -109,7 +114,7 @@ Configure **vJoy Device 1** exactly according to the parameters below:
 
 ---
 
-## ⚠️ Disclaimer
+# ⚠️ Disclaimer
 
 This project is **not affiliated with, endorsed by, or associated with** any development team, publisher, or company related to the Forza franchise, including but not limited to Microsoft, Xbox Game Studios, or Turn 10 Studios.
 
@@ -122,7 +127,7 @@ Use this project **at your own risk**.
 
 ---
 
-## 📄 License
+# 📄 License
 
 This project is licensed under the **MIT License**.  
 See the [LICENSE](LICENSE) file for more details.
