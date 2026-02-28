@@ -16,7 +16,7 @@ This project focuses on reinterpreting controller input as a simulated steering 
 
 ## ⚠️ Current Status: Work In Progress
 
-controller -> engine -> vJoy -> Forza communication is currently functional (it already simulates a wheel using vJoy, including force feedback). However, it does not have an stable release yet; there are planned features that are not yet implemented.
+controller -> engine -> vJoy -> Forza communication is currently functional (it already simulates a wheel using vJoy, including force feedback). A stable release is not planned; eventhough there are planned features that are not implemented yet.
 
 ## Why not use ViGEmBus? (and use vJoy instead)
 
@@ -126,5 +126,6 @@ Use this project **at your own risk**.
 
 This project is licensed under the **MIT License**.  
 See the [LICENSE](LICENSE) file for more details.
+
 
 
