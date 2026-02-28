@@ -1,4 +1,4 @@
-﻿> Note: The development of this project was inspired by the principles of the eXtreme Go Horse (XGH) methodology (+ vibe coding), which served as a lighthearted reference rather than a strictly followed framework. If you are willing to something more structured made by me, you can check the [bits_goals_module](https://github.com/bits-house/bits_goals_module)
+﻿> Note: The development of this project was inspired by the principles of the eXtreme Go Horse (XGH) methodology (+ vibe coding), which served as a lighthearted reference rather than a strictly followed framework. If you are willing to see something more structured made by me, you can check the [bits_goals_module](https://github.com/bits-house/bits_goals_module)
 
 ## 🎯 Project Objective And Motivation
 
@@ -126,4 +126,5 @@ Use this project **at your own risk**.
 
 This project is licensed under the **MIT License**.  
 See the [LICENSE](LICENSE) file for more details.
+
 
