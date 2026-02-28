@@ -1,4 +1,6 @@
-﻿## 🎯 Project Objective And Motivation
+﻿> Note: The development of this project was inspired by the principles of the eXtreme Go Horse (XGH) methodology (+ vibe coding), which served as a lighthearted reference rather than a strictly followed framework. If you are willing to something more structured made by me, you can check the [bits_goals_module](https://github.com/bits-house/bits_goals_module)
+
+## 🎯 Project Objective And Motivation
 
 This project aims to create a **steering simulation layer** that allows a standard game controller to behave like a **continuous steering system**, rather than a raw digital input, in Forza games (Forza Horizon and Forza Motorsport series).
 
