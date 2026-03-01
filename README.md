@@ -16,30 +16,9 @@ This project focuses on reinterpreting controller input as a simulated steering 
 
 ---
 
-# ⚠️ Current Status: Work In Progress
+# ⚠️ Project Status: Work In Progress
 
 controller -> engine -> vJoy -> Forza communication is currently functional (it already simulates a wheel using vJoy, including force feedback - that automatically counter-steers the car by combining FFB with the user’s input). A stable release is not planned, but I will keep improving it.
-
---- 
-
-# Knowledge base
-
-## Why not use ViGEmBus? (and use vJoy instead)
-
-* **1) In Forza Horizon 5:** ViGEmBus is not recognized as a wheel device, only as a generic controller. The game applies a non-configurable deadzone on the steering axis between -0.25 and 0.25 (25% of the total range, in the center of the axis), which does not favor smooth movement; although it can be bypassed with adjustments in the engine's input processing, it is not ideal.
-
-* **2) ViGEmBus alone does not support force feedback**.
-
-## Why not use HidHide to hide input to avoid double input (controller + vJoy)?
-* Even with the device selected and blocking enabled, it remains visible to Steam and Forza. Despite this, it hides the physical controller correctly in other software (e.g., vJoy Monitor, EmuWheel Configurator). I have tested multiples workarounds, involving Windows 11, Steam and Forza Horizon 5 configuration, but none have resolved the issue. The input behavior in Forza was not consistent. The only way I found to hide the controller from Steam and Forza was replacing the Xbox Controller driver from xinput to winUsb using Zadig, so steam and Forza no longer recognize it.
-
-## Why not use SpecialK to hide input to avoid double input?
-* SpecialK injects dlls directly into the game. It is modding, which probably gonna result in a ban.
-
----
-
-Next steps: 
-- Use Forza UDP Telemetry to improve the engine's behavior.
 
 ---
 
@@ -108,8 +87,29 @@ Configure **vJoy Device 1** exactly according to the parameters below:
 1.  Start Forza Horizon 5.
 2.  Go to the game's controller configuration menu.
 3.  Go to the steering mapping section.
-4.  Select select a preset to enable the mapping.
+4.  Select a preset to enable the mapping.
 5.  Map the input. (map the steering last, so it doesn't interfere with the other inputs)
+
+--- 
+
+# Knowledge base
+
+## Why not use ViGEmBus? (and use vJoy instead)
+
+* **1) In Forza Horizon 5:** ViGEmBus is not recognized as a wheel device, only as a generic controller. The game applies a non-configurable deadzone on the steering axis between -0.25 and 0.25 (25% of the total range, in the center of the axis), which does not favor smooth movement; although it can be bypassed with adjustments in the engine's input processing, it is not ideal.
+
+* **2) ViGEmBus alone does not support force feedback**.
+
+## Why not use HidHide to hide input to avoid double input (controller + vJoy)?
+* Even with the device selected and blocking enabled, it remains visible to Steam and Forza. Despite this, it hides the physical controller correctly in other software (e.g., vJoy Monitor, EmuWheel Configurator). I have tested multiples workarounds, involving Windows 11, Steam and Forza Horizon 5 configuration, but none have resolved the issue. The input behavior in Forza was not consistent. The only way I found to hide the controller from Steam and Forza was replacing the Xbox Controller driver from xinput to winUsb using Zadig, so steam and Forza no longer recognize it.
+
+## Why not use SpecialK to hide input to avoid double input?
+* SpecialK injects dlls directly into the game. It is modding, which probably gonna result in a ban.
+
+---
+
+Next steps: 
+- Use Forza UDP Telemetry to improve the engine's behavior.
 
 ---
 
