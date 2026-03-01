@@ -1,4 +1,4 @@
-﻿>Note: The development of this project was influenced by the principles of the eXtreme Go Horse (XGH) methodology and vibe coding, used as conceptual references rather than formally applied frameworks. Check [bits_goals_module](https://github.com/bits-house/bits_goals_module) if you are looking for something professional made by me.
+﻿>Note: The development of this project was influenced by the principles of the eXtreme Go Horse (XGH) methodology and YOLO vibe coding, used as conceptual references rather than formally applied frameworks. Check [bits_goals_module](https://github.com/bits-house/bits_goals_module) if you are looking for something professional made by me.
 
 # Project Overview
 
@@ -47,7 +47,7 @@ Next steps:
 
 This document details the step-by-step process to configure the project, ensuring that everything works - or not.
 
-Note: I have only tested with Xbox 360 Wireless Receiver and Forza Horizon 5. For other controllers to work, you may need to implement a custom driver using WinUSB.
+> Note: I have only tested with Xbox 360 Wireless Receiver and Forza Horizon 5. For other controllers to work, you may need to implement a custom driver using WinUSB.
 
 ## Prerequisites
 * **.NET 8.0 SDK**
