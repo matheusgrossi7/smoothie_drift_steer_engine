@@ -1,4 +1,6 @@
-﻿>Note: The development of this project was influenced by the principles of the eXtreme Go Horse (XGH) methodology and vibe coding, used as conceptual references rather than formally applied frameworks. If you are willing to see something more structured made by me, you can check the [bits_goals_module](https://github.com/bits-house/bits_goals_module)
+﻿>Note: The development of this project was influenced by the principles of the eXtreme Go Horse (XGH) methodology and vibe coding, used as conceptual references rather than formally applied frameworks. 
+
+If you wanna see something more structured, made by me, check [bits_goals_module](https://github.com/bits-house/bits_goals_module)
 
 # Project Overview
 
