@@ -12,7 +12,7 @@ In drifting, style matters. Smooth steering arcs and controlled counter-steer ar
 
 Instead of mapping thumbstick position directly to steering angle, the engine maintains an internal **steering state**, producing a smooth output when drifting (some games like BeamNG.drive already implement similar systems natively).
 
-This project focuses on reinterpreting controller input as a simulated steering system, making it as smooth as possible.
+This project focuses on reinterpreting controller input as a simulated steering system, making the output as smooth as possible.
 
 ---
 
