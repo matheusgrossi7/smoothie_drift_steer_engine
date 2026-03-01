@@ -6,11 +6,11 @@ This project creates a **steering simulation layer** that allows a standard game
 
 > Note: The engine can be adapted to work with other games that have steering wheel support, because it simulates a physical wheel and gets the force feedback directly from it (using vJoy). But, the main focus is Forza Horizon 5 for now.
 
-Instead of mapping thumbstick position directly to steering angle, the engine maintains an internal **steering state**, producing a smooth output when drifting.
+## Context 
 
-The goal is to make drifting with a **game controller** visually smooth from both my perspective and other players' perspectives, eliminating the limitations of digital thumbstick steering (some games like BeamNG.drive already implement similar systems natively).
+In drifting, style matters. Smooth steering arcs and controlled counter-steer are essential for both realism and visual appeal. Traditional game controllers, with their snap-to-center thumbstick inputs, often lead to abrupt and unnatural steering behavior in Forza games, which becomes even more pronounced in the game’s online mode, where steering animations are heavily reduced — causing the wheel to snap abruptly between positions and breaking visual continuity, an issue that does not occur when using a steering wheel.
 
-In drifting, style matters. Smooth steering arcs and controlled counter-steer are essential for both realism and visual appeal. Traditional game controllers, with their snap-to-center thumbstick inputs, often lead to abrupt and unnatural steering behavior in Forza games, which becomes even more pronounced in the game’s online mode, where steering animations are heavily reduced — causing the wheel to snap abruptly between positions and breaking visual continuity, an issue that does not occur when using a steering wheel.
+Instead of mapping thumbstick position directly to steering angle, the engine maintains an internal **steering state**, producing a smooth output when drifting (some games like BeamNG.drive already implement similar systems natively).
 
 This project focuses on reinterpreting controller input as a simulated steering system, making it as smooth as possible.
 
