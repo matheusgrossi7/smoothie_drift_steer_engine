@@ -8,9 +8,9 @@ This project creates a **steering simulation layer** that allows a standard game
 
 ## Context 
 
-In drifting, style matters. Smooth steering arcs and controlled counter-steer are essential for both realism and visual appeal. Traditional game controllers, with their snap-to-center thumbstick inputs, often lead to abrupt and unnatural steering behavior in Forza games, which becomes even more pronounced in the game’s online mode, where steering animations are heavily reduced — causing the wheel to snap abruptly between positions and breaking visual continuity, an issue that does not occur when using a steering wheel.
+In drifting, style matters. Smooth steering arcs and controlled counter-steer are essential for both realism and visual appeal. Traditional game controllers, with their snap-to-center thumbstick inputs, often lead to abrupt and unnatural steering behavior in Forza games, which becomes even more pronounced in the game’s online mode, where steering animations are heavily reduced — causing the wheel to snap abruptly between positions and breaking visual continuity, an issue that does not occur when using a steering wheel.
 
-Instead of mapping thumbstick position directly to steering angle, the engine maintains an internal **steering state**, producing a smooth output when drifting (some games like BeamNG.drive already implement similar systems natively).
+Instead of mapping thumbstick position directly to steering angle, the engine maintains an internal steering state, producing a smooth output when drifting (some games like BeamNG.drive already implement similar systems natively).
 
 This project focuses on reinterpreting controller input as a simulated steering system, making the output as smooth as possible.
 
@@ -34,7 +34,7 @@ controller -> engine -> vJoy -> Forza communication is currently functional (it 
 * Even with the device selected and blocking enabled, it remains visible to Steam and Forza. Despite this, it hides the physical controller correctly in other software (e.g., vJoy Monitor, EmuWheel Configurator). I have tested multiples workarounds, involving Windows 11, Steam and Forza Horizon 5 configuration, but none have resolved the issue. The input behavior in Forza was not consistent. The only way I found to hide the controller from Steam and Forza was replacing the Xbox Controller driver from xinput to winUsb using Zadig, so steam and Forza no longer recognize it.
 
 ## Why not use SpecialK to hide input to avoid double input?
-* Well... its modding. It injects dlls directly into the game, which probably gonna get us banned.
+* SpecialK injects dlls directly into the game. It is modding, which probably gonna result in a ban.
 
 ---
 
