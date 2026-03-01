@@ -1,4 +1,4 @@
-﻿> Note: The development of this project was inspired by the principles of the eXtreme Go Horse (XGH) methodology (+ vibe coding), which served as a lighthearted reference rather than a strictly followed framework. If you are willing to see something more structured made by me, you can check the [bits_goals_module](https://github.com/bits-house/bits_goals_module)
+﻿>Note: The development of this project was influenced by the principles of the eXtreme Go Horse (XGH) methodology and vibe coding, used as conceptual references rather than formally applied frameworks. If you are willing to see something more structured made by me, you can check the [bits_goals_module](https://github.com/bits-house/bits_goals_module)
 
 # Project Overview
 
@@ -10,15 +10,15 @@ Instead of mapping thumbstick position directly to steering angle, the engine ma
 
 The goal is to make drifting with a **game controller** visually smooth from both my perspective and other players' perspectives, eliminating the limitations of digital thumbstick steering (some games like BeamNG.drive already implement similar systems natively).
 
-In drifting, **style matters**. Smooth steering arcs and controlled counter-steer are essential for both realism and visual appeal. Traditional game controllers, with their snap-to-center thumbstick inputs, often lead to abrupt and unnatural steering behavior in Forza games, that gets worse when combined with the animations of the car in the game's online mode, that almost disables all animations - making the wheel jump between positions immediately, detracting from the overall experience. That doesn't happen with a wheel.
+In drifting, style matters. Smooth steering arcs and controlled counter-steer are essential for both realism and visual appeal. Traditional game controllers, with their snap-to-center thumbstick inputs, often lead to abrupt and unnatural steering behavior in Forza games, which becomes even more pronounced in the game’s online mode, where steering animations are heavily reduced — causing the wheel to snap abruptly between positions and breaking visual continuity, an issue that does not occur when using a steering wheel.
 
-This project focuses on reinterpreting controller input as a simulated steering system, making it as smooth and natural as possible.
+This project focuses on reinterpreting controller input as a simulated steering system, making it as smooth as possible.
 
 ---
 
 # ⚠️ Current Status: Work In Progress
 
-controller -> engine -> vJoy -> Forza communication is currently functional (it already simulates a wheel using vJoy, including force feedback - that counter steers the car automatically, combining FFB with the user's input). A stable release is not planned, but I will keep improving the engine and adding features.
+controller -> engine -> vJoy -> Forza communication is currently functional (it already simulates a wheel using vJoy, including force feedback - that automatically counter-steers the car by combining FFB with the user’s input). A stable release is not planned, but I will keep improving it.
 
 --- 
 
@@ -39,7 +39,6 @@ controller -> engine -> vJoy -> Forza communication is currently functional (it 
 ---
 
 Next steps: 
-- Refactor the engine: There are old code from xinput and some stuff not used anymore that can be removed.
 - Use Forza UDP Telemetry to improve the engine's behavior.
 
 ---
@@ -50,7 +49,7 @@ This document details the step-by-step process to configure the project, ensurin
 
 Note: I have only tested with Xbox 360 Wireless Receiver and Forza Horizon 5. For other controllers to work, you may need to implement a custom driver using WinUSB.
 
-## 📋 Prerequisites
+## Prerequisites
 * **.NET 8.0 SDK**
 * **IDE** (e.g., Visual Studio Code with C# extensions).
 
@@ -127,7 +126,7 @@ Use this project **at your own risk**.
 
 ---
 
-# 📄 License
+# License
 
 This project is licensed under the **MIT License**.  
 See the [LICENSE](LICENSE) file for more details.
